@@ -1316,6 +1316,7 @@ def get_envs_autodiff(hamiltonian, reduced_density,
     then takes the derivative with respect to the intput tensors. The function currently
     takes all inputs as tf.Variable. Note that all eight inputs have to be different tf.Variables
     i.e. using get_envs(ham,rho,w,w,w,w,w,w u,u,u,u) will likely not return correct results
+
     Args: 
         isometry_l (tf.Variable):       isometry of the MERA
         isometry_c (tf.Variable):       isometry of the MERA
@@ -1326,9 +1327,11 @@ def get_envs_autodiff(hamiltonian, reduced_density,
         unitary_l (tf.Variable):        unitary of the mera
         unitary_c (tf.Variable):        unitary of the mera
         unitary_l_c (tf.Variable):      conjugated unitary of the mera
-        unitary_c_c (tf.Variable):      xconjugated unitary of the mera
+        unitary_c_c (tf.Variable):      conjugated unitary of the mera
+        get_unitary_envs (bool):        if `True`, calculate the disentangler environments
+                                        if `False`, only calculate isometry environments
     Returns:
-        wenv, uenv (tf.Tensor):        the environments of isometry and unitary, respectively
+        wenv, uenv (tf.Tensor, tf.Tensor or None):   the environments of isometry and unitary, respectively
     """
     #get the left contribution
     net_1 = tn.TensorNetwork()
