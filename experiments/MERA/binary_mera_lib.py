@@ -1304,12 +1304,12 @@ def get_env_isometry_6(hamiltonian, reduced_density, isometry, unitary):
 
 
 @tf.contrib.eager.defun
-def get_envs(hamiltonian, reduced_density,
-             isometry_l, isometry_c, isometry_r, 
-             isometry_l_c, isometry_c_c, isometry_r_c,
-             unitary_l, unitary_r,
-             unitary_l_c, unitary_r_c,
-             get_unitary_envs=True):
+def get_envs_autodiff(hamiltonian, reduced_density,
+                      isometry_l, isometry_c, isometry_r, 
+                      isometry_l_c, isometry_c_c, isometry_r_c,
+                      unitary_l, unitary_r,
+                      unitary_l_c, unitary_r_c,
+                      get_unitary_envs=True):
     """
     calculate environments for disentangler and isometry using autodiff with tf.gradients.
     The method builds two networks for the two contributions to the energy density, and 
