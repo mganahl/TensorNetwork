@@ -130,15 +130,9 @@ def test_autodiff_envs(chi, dtype):
         np.random.rand(chi, chi, chi, chi).astype(dtype.as_numpy_dtype))
     rho = tf.random_uniform(shape=[chi, chi, chi, chi, chi, chi], dtype=dtype)
     ham = tf.random_uniform(shape=[chi, chi, chi, chi, chi, chi], dtype=dtype)
-    
     env_w = bml.get_env_isometry(ham, rho, isometry, unitary)
     env_u = bml.get_env_disentangler(ham, rho, isometry, unitary)
-    args = [tf.Variable(isometry),tf.Variable(isometry),tf.Variable(isometry),
-            tf.Variable(tf.conj(isometry)),tf.Variable(tf.conj(isometry)),
-            tf.Variable(tf.conj(isometry)),
-            tf.Variable(unitary),tf.Variable(unitary), 
-            tf.Variable(tf.conj(unitary)),tf.Variable(tf.conj(unitary))]
-    env_w_1, env_u_1 = bml.get_envs_autodiff(ham, rho, *args)
+    env_w_1, env_u_1 = bml.get_envs_autodiff(ham, rho, isometry,  tf.conj(isometry), unitary, tf.conj(unitary))
     np.testing.assert_allclose(env_w, env_w_1)
     np.testing.assert_allclose(env_u, env_u_1)    
 
