@@ -1305,29 +1305,17 @@ def get_env_isometry_6(hamiltonian, reduced_density, isometry, unitary):
 
 @tf.contrib.eager.defun
 def get_envs_autodiff(hamiltonian, reduced_density,
-                      isometry_l, isometry_c, isometry_r, 
-                      isometry_l_c, isometry_c_c, isometry_r_c,
-                      unitary_l, unitary_r,
-                      unitary_l_c, unitary_r_c,
+                      isometry, isometry_c, unitary, unitary_c,
                       get_unitary_envs=True):
     """
     calculate environments for disentangler and isometry using autodiff with tf.gradients.
     The method builds two networks for the two contributions to the energy density, and 
-    then takes the derivative with respect to the intput tensors. The function currently
-    takes all inputs as tf.Variable. Note that all eight inputs have to be different tf.Variables
-    i.e. using get_envs(ham,rho,w,w,w,w,w,w u,u,u,u) will likely not return correct results
-
+    then takes the derivative with respect to the intput tensors. 
     Args: 
-        isometry_l (tf.Variable):       isometry of the MERA
-        isometry_c (tf.Variable):       isometry of the MERA
-        isometry_r (tf.Variable):       isometry of the MERA
-        isometry_l_c (tf.Variable):     conjugated isometry of the MERA
-        isometry_c_c (tf.Variable):     conjugated isometry of the MERA
-        isometry_r_c (tf.Variable):     conjugated isometry of the MERA
-        unitary_l (tf.Variable):        unitary of the mera
-        unitary_c (tf.Variable):        unitary of the mera
-        unitary_l_c (tf.Variable):      conjugated unitary of the mera
-        unitary_c_c (tf.Variable):      conjugated unitary of the mera
+        isometry   (tf.Tensor):       isometry of the MERA
+        isometry_c (tf.Tensor):       conjugated isometry of the MERA
+        unitary    (tf.Tensor):       unitary of the mera
+        unitary_c  (tf.Tensor):       conjugated unitary of the mera
         get_unitary_envs (bool):        if `True`, calculate the disentangler environments
                                         if `False`, only calculate isometry environments
     Returns:
@@ -1336,22 +1324,23 @@ def get_envs_autodiff(hamiltonian, reduced_density,
     #get the left contribution
     net_1 = tn.TensorNetwork()
 
-    iso_l = net_1.add_node(isometry_l)
-    iso_c = net_1.add_node(isometry_c)
-    iso_r = net_1.add_node(isometry_r)
+    iso_l = net_1.add_node(isometry)
+    iso_c = net_1.add_node(isometry)
+    iso_r = net_1.add_node(isometry)
 
-    iso_l_con = net_1.add_node(isometry_l_c)
-    iso_c_con = net_1.add_node(isometry_c_c)
-    iso_r_con = net_1.add_node(isometry_r_c)
+    iso_l_con = net_1.add_node(isometry_c)
+    iso_c_con = net_1.add_node(isometry_c)
+    iso_r_con = net_1.add_node(isometry_c)
+    
+    un_l = net_1.add_node(unitary)
+    un_l_con = net_1.add_node(unitary_c)
+
+    un_r = net_1.add_node(unitary)
+    un_r_con = net_1.add_node(unitary_c)
     
     op = net_1.add_node(hamiltonian)
     rho = net_1.add_node(reduced_density)
 
-    un_l = net_1.add_node(unitary_l)
-    un_l_con = net_1.add_node(unitary_l_c)
-
-    un_r = net_1.add_node(unitary_r)
-    un_r_con = net_1.add_node(unitary_r_c)
 
     edges = {}
 
@@ -1400,28 +1389,23 @@ def get_envs_autodiff(hamiltonian, reduced_density,
     out = net_1.contract_between(out, iso_r_con)
     energy_left = net_1.contract_between(out, iso_r).get_tensor()
 
-
-
-
     #get the right contribution
     net_2 = tn.TensorNetwork()
+    iso_l = net_2.add_node(isometry)
+    iso_c = net_2.add_node(isometry)
+    iso_r = net_2.add_node(isometry)
 
-    iso_l = net_2.add_node(isometry_l)
-    iso_c = net_2.add_node(isometry_c)
-    iso_r = net_2.add_node(isometry_r)
-
-    iso_l_con = net_2.add_node(tf.conj(isometry_l_c))
-    iso_c_con = net_2.add_node(tf.conj(isometry_c_c))
-    iso_r_con = net_2.add_node(tf.conj(isometry_r_c))
-
+    iso_l_con = net_2.add_node(isometry_c)
+    iso_c_con = net_2.add_node(isometry_c)
+    iso_r_con = net_2.add_node(isometry_c)
+    
+    un_l = net_2.add_node(unitary)
+    un_l_con = net_2.add_node(unitary_c)
+    un_r = net_2.add_node(unitary)
+    un_r_con = net_2.add_node(unitary_c)
+    
     op = net_2.add_node(hamiltonian)
     rho = net_2.add_node(reduced_density)
-
-    un_l = net_2.add_node(unitary_l)
-    un_l_con = net_2.add_node(tf.conj(unitary_l_c))
-
-    un_r = net_2.add_node(unitary_r)
-    un_r_con = net_2.add_node(tf.conj(unitary_r_c))
 
     edges = {}
     edges[1] = net_2.connect(iso_r[1], iso_r_con[1])
@@ -1470,13 +1454,9 @@ def get_envs_autodiff(hamiltonian, reduced_density,
 
     energy = (energy_left + energy_right)
     if get_unitary_envs:
-        gradients = tf.gradients(energy,[isometry_l, isometry_c, isometry_r, unitary_l, unitary_r])
-        return tf.math.reduce_sum(gradients[0:3], axis=0), tf.math.reduce_sum(gradients[3::], axis=0)
-
+        return tf.gradients(energy,[isometry, unitary])
     else:
-        gradients = tf.gradients(energy,[isometry_l, isometry_c, isometry_r])
-        return tf.math.reduce_sum(gradients, axis=0), None
-
+        return tf.gradients(energy,[isometry]), None
 
 
 def get_env_isometry(ham, rho, isometry, unitary):
