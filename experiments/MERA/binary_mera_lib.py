@@ -1303,6 +1303,179 @@ def get_env_isometry_6(hamiltonian, reduced_density, isometry, unitary):
     return out.get_tensor()
 
 
+@tf.contrib.eager.defun
+def get_envs(hamiltonian, reduced_density,
+             isometry_l, isometry_c, isometry_r, 
+             isometry_l_c, isometry_c_c, isometry_r_c,
+             unitary_l, unitary_r,
+             unitary_l_c, unitary_r_c,
+             get_unitary_envs=True):
+    """
+    calculate environments for disentangler and isometry using autodiff with tf.gradients.
+    The method builds two networks for the two contributions to the energy density, and 
+    then takes the derivative with respect to the intput tensors. The function currently
+    takes all inputs as tf.Variable. Note that all eight inputs have to be different tf.Variables
+    i.e. using get_envs(ham,rho,w,w,w,w,w,w u,u,u,u) will likely not return correct results
+    Args: 
+        isometry_l (tf.Variable):       isometry of the MERA
+        isometry_c (tf.Variable):       isometry of the MERA
+        isometry_r (tf.Variable):       isometry of the MERA
+        isometry_l_c (tf.Variable):     conjugated isometry of the MERA
+        isometry_c_c (tf.Variable):     conjugated isometry of the MERA
+        isometry_r_c (tf.Variable):     conjugated isometry of the MERA
+        unitary_l (tf.Variable):        unitary of the mera
+        unitary_c (tf.Variable):        unitary of the mera
+        unitary_l_c (tf.Variable):      conjugated unitary of the mera
+        unitary_c_c (tf.Variable):      xconjugated unitary of the mera
+    Returns:
+        wenv, uenv (tf.Tensor):        the environments of isometry and unitary, respectively
+    """
+    #get the left contribution
+    net_1 = tn.TensorNetwork()
+
+    iso_l = net_1.add_node(isometry_l)
+    iso_c = net_1.add_node(isometry_c)
+    iso_r = net_1.add_node(isometry_r)
+
+    iso_l_con = net_1.add_node(isometry_l_c)
+    iso_c_con = net_1.add_node(isometry_c_c)
+    iso_r_con = net_1.add_node(isometry_r_c)
+    
+    op = net_1.add_node(hamiltonian)
+    rho = net_1.add_node(reduced_density)
+
+    un_l = net_1.add_node(unitary_l)
+    un_l_con = net_1.add_node(unitary_l_c)
+
+    un_r = net_1.add_node(unitary_r)
+    un_r_con = net_1.add_node(unitary_r_c)
+
+    edges = {}
+
+    edges[1] = net_1.connect(iso_l[0], iso_l_con[0])
+    edges[2] = net_1.connect(iso_l[2], rho[0])
+    edges[3] = net_1.connect(iso_l_con[2], rho[3])
+    edges[4] = net_1.connect(op[4], un_r[0])
+    edges[5] = net_1.connect(op[5], un_r[1])
+    edges[6] = net_1.connect(op[1], un_r_con[0])
+    edges[7] = net_1.connect(op[2], un_r_con[1])
+    edges[8] = net_1.connect(iso_c[0], un_l[3])
+    edges[9] = net_1.connect(iso_c_con[0], un_l_con[3])
+    edges[10] = net_1.connect(iso_l_con[1], un_l_con[2])
+    edges[11] = net_1.connect(iso_c_con[2], rho[4])
+    edges[12] = net_1.connect(iso_c[2], rho[1])
+    edges[13] = net_1.connect(iso_l[1], un_l[2])
+    edges[14] = net_1.connect(un_l[0], un_l_con[0])
+    edges[15] = net_1.connect(un_l[1], op[3])
+    edges[16] = net_1.connect(iso_c[1], un_r[2])
+    edges[17] = net_1.connect(un_l_con[1], op[0])
+    edges[18] = net_1.connect(un_r_con[2], iso_c_con[1])
+    edges[19] = net_1.connect(un_r_con[3], iso_r_con[0])
+    edges[20] = net_1.connect(iso_r_con[2], rho[5])
+    edges[21] = net_1.connect(iso_r[0], un_r[3])
+    edges[22] = net_1.connect(iso_r[1], iso_r_con[1])
+    edges[23] = net_1.connect(iso_r[2], rho[2])
+    
+    op = net_1.contract_between(un_r, op)
+    op = net_1.contract_between(op, un_r_con)
+
+    left = net_1.contract(edges[1])
+    out = net_1.contract_between(left, rho)
+    del left, rho
+
+    lower = net_1.contract(edges[9])
+    out = net_1.contract_between(out, lower)
+    del lower
+
+    upper = net_1.contract(edges[8])
+    out = net_1.contract_between(out, upper)
+    del upper
+
+    out = net_1.contract_between(out, op)
+    del op
+
+    out = net_1.contract_between(out, iso_r_con)
+    energy_left = net_1.contract_between(out, iso_r).get_tensor()
+
+
+
+
+    #get the right contribution
+    net_2 = tn.TensorNetwork()
+
+    iso_l = net_2.add_node(isometry_l)
+    iso_c = net_2.add_node(isometry_c)
+    iso_r = net_2.add_node(isometry_r)
+
+    iso_l_con = net_2.add_node(tf.conj(isometry_l_c))
+    iso_c_con = net_2.add_node(tf.conj(isometry_c_c))
+    iso_r_con = net_2.add_node(tf.conj(isometry_r_c))
+
+    op = net_2.add_node(hamiltonian)
+    rho = net_2.add_node(reduced_density)
+
+    un_l = net_2.add_node(unitary_l)
+    un_l_con = net_2.add_node(tf.conj(unitary_l_c))
+
+    un_r = net_2.add_node(unitary_r)
+    un_r_con = net_2.add_node(tf.conj(unitary_r_c))
+
+    edges = {}
+    edges[1] = net_2.connect(iso_r[1], iso_r_con[1])
+    edges[2] = net_2.connect(op[3], un_l[0])
+    edges[3] = net_2.connect(op[4], un_l[1])
+    edges[4] = net_2.connect(op[0], un_l_con[0])
+    edges[5] = net_2.connect(op[1], un_l_con[1])
+    edges[6] = net_2.connect(rho[2], iso_r[2])
+    edges[7] = net_2.connect(rho[5], iso_r_con[2])
+    edges[8] = net_2.connect(iso_c_con[1], un_r_con[2])
+    edges[9] = net_2.connect(iso_c[1], un_r[2])
+    edges[10] = net_2.connect(rho[4], iso_c_con[2])
+    edges[11] = net_2.connect(iso_r_con[0], un_r_con[3])
+    edges[12] = net_2.connect(rho[1], iso_c[2])
+    edges[13] = net_2.connect(un_r[3], iso_r[0])
+    edges[14] = net_2.connect(un_r[1], un_r_con[1])
+    edges[15] = net_2.connect(un_l[3], iso_c[0])
+    edges[16] = net_2.connect(op[5], un_r[0])
+    edges[17] = net_2.connect(un_l_con[3], iso_c_con[0])
+    edges[18] = net_2.connect(op[2], un_r_con[0])
+    edges[19] = net_2.connect(iso_l_con[2], rho[3])
+    edges[20] = net_2.connect(iso_l_con[1], un_l_con[2])
+    edges[21] = net_2.connect(iso_l_con[0], iso_l[0])
+    edges[22] = net_2.connect(un_l[2], iso_l[1])
+    edges[23] = net_2.connect(rho[0], iso_l[2])
+
+    out = net_2.contract(edges[1])
+    out = net_2.contract_between(out, rho)
+    del rho
+
+    lower = net_2.contract(edges[8])
+    out = net_2.contract_between(lower, out)
+    del lower
+
+    upper = net_2.contract(edges[9])
+    out = net_2.contract_between(upper, out)
+    del upper
+
+    op = net_2.contract_between(un_l, op)
+    op = net_2.contract_between(op, un_l_con)
+    out = net_2.contract_between(op, out)
+    del op
+
+    out = net_2.contract_between(iso_l_con, out)
+    energy_right = net_2.contract_between(iso_l, out).get_tensor()
+
+    energy = (energy_left + energy_right)
+    if get_unitary_envs:
+        gradients = tf.gradients(energy,[isometry_l, isometry_c, isometry_r, unitary_l, unitary_r])
+        return tf.math.reduce_sum(gradients[0:3], axis=0), tf.math.reduce_sum(gradients[3::], axis=0)
+
+    else:
+        gradients = tf.gradients(energy,[isometry_l, isometry_c, isometry_r])
+        return tf.math.reduce_sum(gradients, axis=0), None
+
+
+
 def get_env_isometry(ham, rho, isometry, unitary):
     """
     compute the isometry environment
