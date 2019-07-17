@@ -30,6 +30,10 @@ from experiments.MPS.matrixproductstates import InfiniteMPSCentralGauge, FiniteM
 
 
 class OverlapMinimizer:
+    """
+    minimizes the overlap between `mps` and `conj_mps` using a double layer of two-body unitaries.
+    For now `mps` and `conj_mps` have to have even length
+    """
     def __init__(self, mps, conj_mps, gates, name='overlap_minimizer'):
         self.name = name
         self.mps = mps
@@ -127,6 +131,16 @@ class OverlapMinimizer:
         
 
     def minimize(self,num_iterations, verbose=0):
+        """
+        minimize the overlap by optimizing over the even  and odd two-body unitaries,
+        alternating between even and odd layer.
+        minimization runs from left to right and right to left, and changes `gates` one at at time.
+        Args:
+            num_iterations (int):  number of iterations
+            thresh (float):        if overlap is larger than `thresh`, optimization stops
+            verbose (int):         verbosity flag; larger means more output
+        """
+        
         [self.add_unitary_right(site, self.right_envs, self.mps, self.conj_mps, self.gates) for site in reversed(range(1,len(self.mps)))]        
         for it in range(num_iterations):
             for site in range(len(self.mps) - 1):
@@ -156,6 +170,14 @@ class OverlapMinimizer:
                     print()
 
     def minimize_even(self,num_iterations, thresh=1.0, verbose=0):
+        """
+        minimize the overlap by optimizing over the even two-body unitaries.
+        minimization runs from left to right and changes `gates` one at at time.
+        Args:
+            num_iterations (int):  number of iterations
+            thresh (float):        if overlap is larger than `thresh`, optimization stops
+            verbose (int):         verbosity flag; larger means more output
+        """
         self.left_envs = {}
         self.right_envs = {}        
 
@@ -182,6 +204,14 @@ class OverlapMinimizer:
 
 
     def minimize_odd(self,num_iterations, thresh=1.0, verbose=0):
+        """
+        minimize the overlap by optimizing over the odd two-body unitaries. 
+        minimization runs from left to right and changes `gates` one at at time.
+        Args:
+            num_iterations (int):  number of iterations
+            thresh (float):        if overlap is larger than `thresh`, optimization stops
+            verbose (int):         verbosity flag; larger means more output
+        """
         self.left_envs = {}
         self.right_envs = {}        
         for it in range(num_iterations):
