@@ -894,7 +894,6 @@ class MPSClassifier(mps.FiniteMPSCentralGauge):
             list of scalar tf.Tensor: the training accuracies     
         """
 
-        
         losses, accuracies = [],[]        
         for sweep in range(num_sweeps):
             
@@ -905,7 +904,6 @@ class MPSClassifier(mps.FiniteMPSCentralGauge):
             
             loss, accs = self.right_left_sweep_simple(samples, labels, learning_rate,
                                                       t0=t0, n0=n0)
-            
             losses.extend(loss)
             accuracies.extend(accs)
         return losses, accuracies

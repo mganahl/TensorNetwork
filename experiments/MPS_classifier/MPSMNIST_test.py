@@ -42,6 +42,7 @@ def test_predict():
         pred= misc_mps.ncon([left, mps.get_tensor(mps.label_pos), right],[[1], [1, -1, 2], [2]])
         return pred / tf.linalg.norm(pred)            
 
+
     a = predictor(mps,sample, mps.label_pos-40).numpy()
     b = predictor(mps,sample,mps.label_pos).numpy()
     c = predictor(mps,sample,mps.label_pos + 40).numpy()

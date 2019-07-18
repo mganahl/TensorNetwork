@@ -43,6 +43,7 @@ if __name__ == "__main__":
         labels = tf.convert_to_tensor(labs[0].astype(dtype.as_numpy_dtype))
         mps.compute_data_environments(samples)    
         
+
         l, a = mps.right_left_sweep_simple(samples,labels,learning_rate=lr,
                                            t0=t0)
                                            
@@ -57,7 +58,6 @@ if __name__ == "__main__":
             l, a = mps.right_left_sweep_simple(samples,labels,learning_rate=lr,t0=t0)
             losses.extend(l)
             accuracies.extend(a)
-                                                            
     
         with open(today + '_MPS_MNIST_classifier_D{}.pickle'.format(D), 'wb') as f:
             pickle.dump(mps, f)
