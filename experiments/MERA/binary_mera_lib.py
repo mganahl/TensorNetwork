@@ -1304,7 +1304,7 @@ def get_env_isometry_6(hamiltonian, reduced_density, isometry, unitary):
     return out.get_tensor()
 
 
-@tf.contrib.eager.defun
+@tf.contrib.eager.defun(autograph=False)
 def get_envs_autodiff(hamiltonian, reduced_density,
                       isometry, isometry_c, unitary, unitary_c,
                       get_unitary_envs=True):
