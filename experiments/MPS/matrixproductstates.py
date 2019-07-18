@@ -1587,13 +1587,12 @@ class FiniteMPSCentralGauge(MPSUnitCellCentralGauge, AbstractFiniteMPS):
         p_joint_0 = tf.linalg.diag_part(tn.ncon([lenv,self.get_tensor(site), tf.conj(self.get_tensor(site)), right_envs[site]],
                                                 [[-1, 1, 2], [1, -2, 3],[2, -3, 4], [3, 4]])) #shape (Nt, d)
         #print(p_joint_0.shape, Z0.shape, Z1.shape, p_joint_1.shape)
-
-        p_cond = Z0 / Z1 * tf.abs(p_joint_0/p_joint_1)
+        p_cond = Z0 / Z1 * p_joint_0/p_joint_1
 
         p_cond /= np.expand_dims(tf.math.reduce_sum(p_cond,axis=1),1)
 
         #print(tf.math.reduce_sum(p_cond,1))
-        sigmas.append(tf.squeeze(tf.random.categorical(tf.math.log(p_cond),1)))
+        sigmas.append(tf.squeeze(tf.random.categorical(tf.math.log(tf.abs(p_cond)),1)))
         p_joint_1 = tf.expand_dims(tf.math.reduce_sum(p_cond * tf.one_hot(sigmas[-1], ds[site], dtype=dtype), axis=1),1)
 
         one_hots = tf.one_hot(sigmas[-1],ds[site], dtype=dtype)
