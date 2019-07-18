@@ -1604,6 +1604,70 @@ class FiniteMPSCentralGauge(MPSUnitCellCentralGauge, AbstractFiniteMPS):
     
 
 
+  def get_amplitude(self, sigmas):
+      """
+      compute the amplitude of configuration `sigma`
+      This is not very efficient
+      Args:
+        sigma (tf.Tensor of shape (n_samples, N):  basis configuration
+      Returns:
+        tf.Tensor of shape (n_samples): the amplitudes
+
+      """
+      ds = self.d
+      dtype = self.dtype
+      left = tf.expand_dims(tf.ones(shape=(sigmas.shape[0], self.D[0]),dtype=dtype), 1)  #(Nt, 1, Dl)
+
+      for site in range(len(self)):
+        tmp = tn.ncon([self.get_tensor(site), tf.one_hot(sigmas[:,site], ds[site], dtype=dtype)],[[-2, 1, -3], [-1, 1]]) #(Nt, Dl, Dr)
+        left = tf.matmul(left, tmp) #(Nt, 1, Dr)
+      return tf.squeeze(left)
+  
+  def generate_samples(self, num_samples):
+      """
+      generate samples from the MPS probability amplitude
+      Args:
+          num_samples(int): number of samples
+      Returns:
+          tf.Tensor of shape (num_samples, len(self):  the samples
+      """
+      dtype = self.dtype
+      
+      self.position(len(self))
+      self.position(0)
+      ds = self.d #calling self.d and self.D repeatedly is very slow
+      Ds = self.D
+      right_envs = self.get_envs_right(range(len(self)))
+      it = 0
+      sigmas = []
+      p_joint_1 = tf.ones(shape=[num_samples, 1], dtype=dtype)
+      lenv = tf.stack([tf.eye(Ds[0], dtype=dtype) for _ in range(num_samples)], axis=0) #shape (num_samples, 1, 1)
+      Z1 = tf.ones(shape=[num_samples,1], dtype=dtype)#shape (num_samples, 1)
+      for site in range(len(self)):
+        stdout.write( "\rgenerating samples at site %i/%i" % (site,len(self)))
+        Z0 = tf.expand_dims(tf.linalg.norm(tf.reshape(lenv,(num_samples, Ds[site] * Ds[site])), axis=1),1) #shape (num_samples, 1)
+        lenv /= tf.expand_dims(Z0,2)
+        p_joint_0 = tf.linalg.diag_part(tn.ncon([lenv,self.get_tensor(site), tf.conj(self.get_tensor(site)), right_envs[site]],
+                                                [[-1, 1, 2], [1, -2, 3],[2, -3, 4], [3, 4]])) #shape (Nt, d)
+        #print(p_joint_0.shape, Z0.shape, Z1.shape, p_joint_1.shape)
+
+        p_cond = Z0 / Z1 * tf.abs(p_joint_0/p_joint_1)
+
+        p_cond /= np.expand_dims(tf.math.reduce_sum(p_cond,axis=1),1)
+
+        #print(tf.math.reduce_sum(p_cond,1))
+        sigmas.append(tf.squeeze(tf.random.categorical(tf.math.log(p_cond),1)))
+        p_joint_1 = tf.expand_dims(tf.math.reduce_sum(p_cond * tf.one_hot(sigmas[-1], ds[site], dtype=dtype), axis=1),1)
+
+        one_hots = tf.one_hot(sigmas[-1],ds[site], dtype=dtype)
+        tmp = tn.ncon([self.get_tensor(site), one_hots],[[-2, 1, -3], [-1, 1]])          #tmp has shape (Nt, Dl, Dr)
+        tmp2 = tf.transpose(tf.matmul(tf.transpose(lenv,(0, 2, 1)), tmp), (0, 2, 1)) #has shape (Nt, Dr, Dl') #FIXME: get rid of all these transposes
+        lenv = tf.matmul(tmp2, tf.conj(tmp)) #has shape (Nt, Dr, Dr')
+        Z1 = Z0
+      return tf.stack(sigmas, axis=1)
+    
+
+
 class InfiniteMPSCentralGauge(MPSUnitCellCentralGauge, AbstractInfiniteMPS):
   """
     A simple MPS class for infinite systems;

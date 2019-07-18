@@ -99,6 +99,7 @@ def u_update_svd(wIn):
     return -tf.reshape(tn.ncon([ut, tf.conj(vt)], [[-1, 1], [-2, 1]]), shape)
 
 
+#@tf.contrib.eager.defun
 def u_update_svd_numpy(wIn):
     """
     obtain the update to the disentangler using numpy svd
@@ -110,6 +111,7 @@ def u_update_svd_numpy(wIn):
     return -tf.reshape(tn.ncon([ut, vt], [[-1, 1], [1, -2]]), shape)
 
 
+@tf.contrib.eager.defun
 def w_update_svd(wIn):
     """
     obtain the update to the isometry using tf.tensor
