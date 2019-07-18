@@ -34,6 +34,7 @@ def trace(rho):
     out = net.contract_parallel(edges[0])
     return out.get_tensor()
 
+
 @tf.contrib.eager.defun
 def symmetrize(rho):
     """
@@ -43,11 +44,12 @@ def symmetrize(rho):
     Returns:
         tf.Tensor:  the symmetrized version of `rho`
     """
-    dim = len(rho.get_shape()) // 2
+    dim = len(rho.shape) // 2
     inds_1 = [n for n in range(dim)]
     inds_2 = [n + dim for n in range(dim)]
     indices = inds_2 + inds_1
     return 1 / 2 * (rho + tf.conj(tf.transpose(rho, indices)))
+
 
 
 @tf.contrib.eager.defun
@@ -72,7 +74,7 @@ def pad_tensor(tensor, new_shape):
     """
     pad `tensor` with zeros to shape `new_shape`
     """
-    paddings = np.zeros((len(tensor.get_shape()), 2)).astype(np.int32)
+    paddings = np.zeros((len(tensor.shape), 2)).astype(np.int32)
     for n in range(len(new_shape)):
         paddings[n, 1] = max(new_shape[n] - tensor.get_shape()[n], 0)
     return tf.pad(tensor, paddings)
@@ -85,7 +87,7 @@ def all_same_chi(*tensors):
     chis = [t.get_shape()[n] for t in tensors for n in range(len(t.get_shape()))]
     return np.all([c == chis[0] for c in chis])
 
-@tf.contrib.eager.defun
+
 def u_update_svd(wIn):
     """
     obtain the update to the disentangler using tf.svd
@@ -95,6 +97,7 @@ def u_update_svd(wIn):
         tf.reshape(wIn, (shape[0] * shape[1], shape[2] * shape[3])),
         full_matrices=False)
     return -tf.reshape(tn.ncon([ut, tf.conj(vt)], [[-1, 1], [-2, 1]]), shape)
+
 
 #@tf.contrib.eager.defun
 def u_update_svd_numpy(wIn):
@@ -106,6 +109,7 @@ def u_update_svd_numpy(wIn):
         tf.reshape(wIn, (shape[0] * shape[1], shape[2] * shape[3])),
         full_matrices=False)
     return -tf.reshape(tn.ncon([ut, vt], [[-1, 1], [1, -2]]), shape)
+
 
 @tf.contrib.eager.defun
 def w_update_svd(wIn):
@@ -121,10 +125,11 @@ def w_update_svd_numpy(wIn):
     """
     obtain the update to the isometry using numpy svd
     """
-    shape = wIn.get_shape()
+    shape = wIn.shape
     ut, st, vt = np.linalg.svd(
         tf.reshape(wIn, (shape[0] * shape[1], shape[2])), full_matrices=False)
     return -tf.reshape(tn.ncon([ut, vt], [[-1, 1], [1, -2]]), shape)
+
 
 def skip_layer(isometry):
     if isometry.get_shape()[2] >= (isometry.get_shape()[0] * isometry.get_shape()[1]):
