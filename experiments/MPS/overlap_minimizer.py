@@ -246,8 +246,9 @@ class OverlapMinimizer:
         #mat = tn.ncon([ut, vt], [[-1, 1], [1, -2]])
         mat = tn.ncon([np.conj(ut), np.conj(vt)], [[-1, 1], [1,-2]])        
         return tf.reshape(mat, shape)
+    #@staticmethod
+    #def gradient_update_unitary(sites,left_envs,right_envs, mps, conj_mps):
         
-
     def minimize_layerwise(self,num_iterations, alpha = 1.0, verbose=0):
         """
         minimize the overlap by optimizing over the even  and odd two-body unitaries,
