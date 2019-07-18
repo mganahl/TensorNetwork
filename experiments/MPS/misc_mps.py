@@ -23,7 +23,7 @@ import copy
 import functools as fct
 import tensornetwork as tn
 from scipy.sparse.linalg import LinearOperator, lgmres, eigs
-ncon_defuned = tf.contrib.eager.defun(ncon_tn)
+ncon_defuned = tf.contrib.eager.defun(ncon_tn, autograph=False)
 
 
 def transfer_op(As, Bs, direction, x):
@@ -41,17 +41,17 @@ def transfer_op(As, Bs, direction, x):
 
   if direction in ('l', 'left', 1):
     for n in range(len(As)):
-      x = ncon([x, As[n], tf.conj(Bs[n])], [(0, 1), (0, 2, -1), (1, 2, -2)])
+      x = ncon([x, As[n], tf.conj(Bs[n])], [(1, 2), (1, 3, -1), (2, 3, -2)])
   elif direction in ('r', 'right', -1):
     for n in reversed(range(len(As))):
-      x = ncon([x, As[n], tf.conj(Bs[n])], [(0, 1), (-1, 2, 0), (-2, 2, 1)])
+      x = ncon([x, As[n], tf.conj(Bs[n])], [(1, 2), (-1, 3, 1), (-2, 3, 2)])
   else:
     raise ValueError("Invalid direction: {}".format(direction))
 
   return x
 
 
-transfer_op_defuned = tf.contrib.eager.defun(transfer_op)
+transfer_op_defuned = tf.contrib.eager.defun(transfer_op, autograph=False)
 
 
 def add_layer(B, mps_tensor, mpo, conj_mps_tensor, direction):
@@ -83,7 +83,7 @@ def add_layer(B, mps_tensor, mpo, conj_mps_tensor, direction):
         [[1, 4, 3], [-1, 2, 1], [-3, 3, 5, 2], [-2, 5, 4]])
 
 
-add_layer_defuned = tf.contrib.eager.defun(add_layer)
+add_layer_defuned = tf.contrib.eager.defun(add_layer, autograph=False)
 
 
 def one_minus_pseudo_unitcell_transfer_op(direction, mps, left_dominant,
@@ -384,51 +384,62 @@ def prepare_tensor_QR(tensor, direction):
     return tf.transpose(tf.conj(r)), out, Z
 
 
-prepare_tensor_QR_defuned = tf.contrib.eager.defun(prepare_tensor_QR)
+prepare_tensor_QR_defuned = tf.contrib.eager.defun(prepare_tensor_QR, autograph=False)
 
-
-def prepare_tensor_SVD(tensor, direction):
-  """
-    prepares an mps tensor using svd decomposition 
-    Args:
-        tensor (tf.Tensors):  tensor of shape(D1,D2,d)
-                              an mps tensor
-        direction (int):      if `int` > 0: returns left orthogonal decomposition, 
-                              if `int` < 0: returns right orthogonal decomposition
+def prepare_tensor_SVD(tensor, direction, D=None, thresh=1E-32, normalize=False):
+    """
+    prepares and truncates an mps tensor using svd
+    Parameters:
+    ---------------------
+    tensor: np.ndarray of shape(D1,D2,d)
+            an mps tensor
+    direction: int
+               if >0 returns left orthogonal decomposition, if <0 returns right orthogonal decomposition
+    thresh: float
+            cutoff of schmidt-value truncation
+    r_thresh: float
+              only used when svd throws an exception.
+    D:        int or None
+              the maximum bond-dimension to keep (hard cutoff); if None, no truncation is applied
 
     Returns:
-        if direction>0: (out,s,v) with
-        out (tf.Tensor): a left isometric tf.Tensor of dimension (D1,D,d)
-        s (tf.Tensor):   the singular values of length D
-        v (tf.Tensor):   a right isometric tf.Tensor of dimension (D,D2)
+    ----------------------------
+    direction>0: out,s,v,Z
+                 out: a left isometric tensor of dimension (D1,D,d)
+                 s  : the singular values of length D
+                 v  : a right isometric matrix of dimension (D,D2)
+                 Z  : the norm of tensor, i.e. tensor"="out.dot(s).dot(v)*Z
+    direction<0: u,s,out,Z
+                 u  : a left isometric matrix of dimension (D1,D)
+                 s  : the singular values of length D
+                 out: a right isometric tensor of dimension (D,D2,d)
+                 Z  : the norm of tensor, i.e. tensor"="u.dot(s).dot(out)*Z
 
-        if direction<0: (u,s,out) with
-        u (tf.Tensor):   a left isometric tf.Tensor of dimension (D1,D)
-        s (tf.Tensor):   the singular values of length D
-        out (tf.Tensor): a right isometric tf.Tensor of dimension (D,D2,d)
     """
-  l1, d, l2 = tf.unstack(tf.shape(tensor))
 
-  if direction in ('l', 'left', 1):
-    temp = tf.reshape(tensor, [d * l1, l2])
-    s, u, v = tf.linalg.svd(temp, full_matrices=False)
-    Z = tf.linalg.norm(s)
-    #s/=Z
-    size1, size2 = tf.unstack(tf.shape(u))
-    out = tf.reshape(u, [l1, d, size2])
-    return out, s, tf.transpose(tf.conj(v)), Z
+    assert (direction != 0), 'do NOT use direction=0!'
+    [l1, l2, d] = tensor.shape
+    if direction in (1, 'l', 'left'):
+        net = tn.TensorNetwork()
+        node = net.add_node(tensor)
+        u_node, s_node, v_node, _ = net.split_node_full_svd(node, [node[0], node[1]], [node[2]], max_singular_values=D, max_truncation_err=thresh)
+        Z = tf.linalg.norm(s_node.tensor)
+        if normalize:
+          s_node.tensor /= Z
+        return u_node.tensor, s_node.tensor, v_node.tensor, Z
 
-  if direction in ('r', 'right', -1):
-    temp = tf.reshape(tensor, [l1, d * l2])
-    s, u, v = tf.linalg.svd(temp, full_matrices=False)
-    Z = tf.linalg.norm(s)
-    #s/=Z
-    size1, size2 = tf.unstack(tf.shape(v))
-    out = tf.reshape(tf.transpose(tf.conj(v)), [size2, d, l2])
-    return u, s, out, Z
+    if direction in (-1, 'r', 'right'):
+        net = tn.TensorNetwork()
+        node = net.add_node(tensor)
+        u_node, s_node, v_node, _ = net.split_node_full_svd(node, [node[0]], [node[1], node[2]], max_singular_values=D, max_truncation_err=thresh)
+        Z = tf.linalg.norm(s_node.tensor)
+        if normalize:        
+          s_node.tensor /= Z
+        return u_node.tensor, s_node.tensor, v_node.tensor, Z
 
 
-prepare_tensor_SVD_defuned = tf.contrib.eager.defun(prepare_tensor_SVD)
+
+prepare_tensor_SVD_defuned = tf.contrib.eager.defun(prepare_tensor_SVD, autograph=False)
 
 
 def apply_2site_schmidt_canonical(op,
@@ -515,7 +526,7 @@ def apply_2site_schmidt_canonical(op,
 
 
 apply_2site_schmidt_canonical_defuned = tf.contrib.eager.defun(
-    apply_2site_schmidt_canonical)
+    apply_2site_schmidt_canonical, autograph=False)
 
 
 def apply_2site_generic(op, A1, A2, max_bond_dim=None, auto_trunc_max_err=0.0):
@@ -560,7 +571,7 @@ def apply_2site_generic(op, A1, A2, max_bond_dim=None, auto_trunc_max_err=0.0):
   return nA1_new.tensor, nC.tensor, nA2_new.tensor, trunc_err
 
 
-apply_2site_generic_defuned = tf.contrib.eager.defun(apply_2site_generic)
+apply_2site_generic_defuned = tf.contrib.eager.defun(apply_2site_generic, autograph=False)
 
 
 @tf.contrib.eager.defun
@@ -906,7 +917,7 @@ def restore_helper(tensors,
   return As, mat, connector, right_mat
 
 
-@tf.contrib.eager.defun
+@tf.contrib.eager.defun(autograph=False)
 def restore_helper_power_method(tensors,
                                 init=None,
                                 precision=1E-12,
