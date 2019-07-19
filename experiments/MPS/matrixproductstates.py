@@ -1619,7 +1619,7 @@ class FiniteMPSCentralGauge(MPSUnitCellCentralGauge, AbstractFiniteMPS):
       left = tf.expand_dims(tf.ones(shape=(sigmas.shape[0], self.D[0]),dtype=dtype), 1)  #(Nt, 1, Dl)
 
       for site in range(len(self)):
-        tmp = tn.ncon([self.get_tensor(site), tf.one_hot(sigmas[:,site], ds[site], dtype=dtype)],[[-2, 1, -3], [-1, 1]]) #(Nt, Dl, Dr)
+        tmp = misc_mps.ncon([self.get_tensor(site), tf.one_hot(sigmas[:,site], ds[site], dtype=dtype)],[[-2, 1, -3], [-1, 1]]) #(Nt, Dl, Dr)
         left = tf.matmul(left, tmp) #(Nt, 1, Dr)
       return tf.squeeze(left)
   
@@ -1647,7 +1647,7 @@ class FiniteMPSCentralGauge(MPSUnitCellCentralGauge, AbstractFiniteMPS):
         stdout.write( "\rgenerating samples at site %i/%i" % (site,len(self)))
         Z0 = tf.expand_dims(tf.linalg.norm(tf.reshape(lenv,(num_samples, Ds[site] * Ds[site])), axis=1),1) #shape (num_samples, 1)
         lenv /= tf.expand_dims(Z0,2)
-        p_joint_0 = tf.linalg.diag_part(tn.ncon([lenv,self.get_tensor(site), tf.conj(self.get_tensor(site)), right_envs[site]],
+        p_joint_0 = tf.linalg.diag_part(misc_mps.ncon([lenv,self.get_tensor(site), tf.conj(self.get_tensor(site)), right_envs[site]],
                                                 [[-1, 1, 2], [1, -2, 3],[2, -3, 4], [3, 4]])) #shape (Nt, d)
         #print(p_joint_0.shape, Z0.shape, Z1.shape, p_joint_1.shape)
 
@@ -1660,7 +1660,7 @@ class FiniteMPSCentralGauge(MPSUnitCellCentralGauge, AbstractFiniteMPS):
         p_joint_1 = tf.expand_dims(tf.math.reduce_sum(p_cond * tf.one_hot(sigmas[-1], ds[site], dtype=dtype), axis=1),1)
 
         one_hots = tf.one_hot(sigmas[-1],ds[site], dtype=dtype)
-        tmp = tn.ncon([self.get_tensor(site), one_hots],[[-2, 1, -3], [-1, 1]])          #tmp has shape (Nt, Dl, Dr)
+        tmp = misc_mps.ncon([self.get_tensor(site), one_hots],[[-2, 1, -3], [-1, 1]])          #tmp has shape (Nt, Dl, Dr)
         tmp2 = tf.transpose(tf.matmul(tf.transpose(lenv,(0, 2, 1)), tmp), (0, 2, 1)) #has shape (Nt, Dr, Dl') #FIXME: get rid of all these transposes
         lenv = tf.matmul(tmp2, tf.conj(tmp)) #has shape (Nt, Dr, Dr')
         Z1 = Z0
