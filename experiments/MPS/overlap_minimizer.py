@@ -21,8 +21,8 @@ import time
 import tensornetwork as tn
 import numpy as np
 import tensorflow as tf
-import experiments.MPS.Lanczos as LZ
 import experiments.MPS_classifier.batchtensornetwork as btn
+import experiments.MPS.misc_mps as misc_mps
 from sys import stdout
 from experiments.MPS import misc_mps
 import experiments.MPS.DMRG as DMRG
@@ -54,10 +54,10 @@ class OverlapMinimizer:
         assert(site>0)
         assert(len(mps)%2==0)
         if site == (len(mps) - 1):
-            right_envs[site - 1] = tf.squeeze(tn.ncon([mps.get_tensor(site), gates[(site-1,site)], tf.one_hot(samples[:,site], mps.d[site], dtype=mps.dtype)],
+            right_envs[site - 1] = tf.squeeze(misc_mps.ncon([mps.get_tensor(site), gates[(site-1,site)], tf.one_hot(samples[:,site], mps.d[site], dtype=mps.dtype)],
                                                       [[-2,1,-5],[-4, 2, -3, 1],[-1,2]]), 4)
         elif (site < len(mps) - 1) and (site % 2 == 0):
-            tmp = tn.ncon([right_envs[site], mps.get_tensor(site), gates[(site-1,site)]],
+            tmp = misc_mps.ncon([right_envs[site], mps.get_tensor(site), gates[(site-1,site)]],
                           [[-1,1,2,3],[-2,2,1],[-4, -5, -3, 3]]) #shape (Nt, D, din, dout, d)
             Nt, D, din, dout, d = tmp.shape
             tmp = tf.reshape(tmp, (Nt, D * din * dout, d)) #(Nt, D * din * dout, d)
@@ -65,7 +65,7 @@ class OverlapMinimizer:
             right_envs[site - 1] = tf.reshape(tf.matmul(tmp, tmp2),(Nt, D, din, dout))            
             
         elif (site < len(mps) - 1) and (site % 2 == 1):
-            tmp = tn.ncon([right_envs[site], mps.get_tensor(site), gates[(site-1,site)]],
+            tmp = misc_mps.ncon([right_envs[site], mps.get_tensor(site), gates[(site-1,site)]],
                            [[-1, 1, 3, -5],[-2, 2, 1],[-4, 3, -3, 2]]) #has shape (Nt, Dl, din1, dout1, d)
             Nt, D, din, dout, d = tmp.shape
             tmp = tf.reshape(tmp, (Nt, D * din * dout, d))
@@ -80,10 +80,10 @@ class OverlapMinimizer:
         assert(len(mps)%2==0)
             
         if site == 0:
-            left_envs[site + 1] = tf.squeeze(tn.ncon([mps.get_tensor(site), gates[(site, site + 1)], tf.one_hot(samples[:,site], mps.d[site], dtype=mps.dtype)],
+            left_envs[site + 1] = tf.squeeze(misc_mps.ncon([mps.get_tensor(site), gates[(site, site + 1)], tf.one_hot(samples[:,site], mps.d[site], dtype=mps.dtype)],
                                                      [[-5, 1, -2],[2, -4, 1, -3], [-1, 2]]), 4)
         elif (site > 0) and (site % 2 == 0):
-            tmp = tn.ncon([left_envs[site], mps.get_tensor(site), gates[(site, site + 1)]],
+            tmp = misc_mps.ncon([left_envs[site], mps.get_tensor(site), gates[(site, site + 1)]],
                           [[-1, 1, 3, -5], [1, 2, -2], [3, -4, 2, -3]]) #has shape (Nt, D, di, do, d)
             Nt, D, di, do, d = tmp.shape
             tmp2 = tf.expand_dims(tf.one_hot(samples[:, site], mps.d[site], dtype=mps.dtype),2)#has dim (Nt, d, 1)
@@ -91,7 +91,7 @@ class OverlapMinimizer:
             left_envs[site + 1] = tf.reshape(tf.matmul(tmp, tmp2), (Nt, D, di, do))
             
         elif (site > 0) and (site % 2 == 1):
-            tmp = tn.ncon([left_envs[site], mps.get_tensor(site), gates[(site, site + 1)]],
+            tmp = misc_mps.ncon([left_envs[site], mps.get_tensor(site), gates[(site, site + 1)]],
                           [[-1, 1, 2, 3], [1, 2, -2], [-5, -4, 3, -3]]) #has shape (Nt, D, di, do, d)
             Nt, D, di, do, d = tmp.shape
             tmp2 = tf.expand_dims(tf.one_hot(samples[:, site], mps.d[site], dtype=mps.dtype),2)#has dim (Nt, d, 1)
@@ -103,7 +103,7 @@ class OverlapMinimizer:
         assert((len(mps) % 2) == 0)
         if (sites[0] > 0) and (sites[1] < len(mps) - 1) and (sites[0] % 2 == 0):
             raise NotImplementedError
-            return tn.ncon([left_envs[sites[0]], mps.get_tensor(sites[0]), 
+            return misc_mps.ncon([left_envs[sites[0]], mps.get_tensor(sites[0]), 
                        mps.get_tensor(sites[1]), right_envs[sites[1]], 
                        tf.conj(conj_mps.get_tensor(sites[0])), tf.conj(conj_mps.get_tensor(sites[1]))],
                       [[7,1,-1,2], [7,-3,6], [6,-4,8], [8,4,-2,3], [1,2,5], [5,3,4]])
@@ -145,13 +145,13 @@ class OverlapMinimizer:
             
         elif sites[0] == 0:
             raise NotImplementedError            
-            return tn.ncon([mps.get_tensor(sites[0]), 
+            return misc_mps.ncon([mps.get_tensor(sites[0]), 
                             mps.get_tensor(sites[1]), right_envs[sites[1]], 
                             tf.conj(conj_mps.get_tensor(sites[0])), tf.conj(conj_mps.get_tensor(sites[1]))],
                            [[1, -3, 2], [2, -4, 3], [3, 4, -2, 5], [1, -1, 6], [6, 5, 4]])  
         elif sites[1] == (len(mps) - 1):
             raise NotImplementedError                        
-            return tn.ncon([left_envs[sites[0]], mps.get_tensor(sites[0]), 
+            return misc_mps.ncon([left_envs[sites[0]], mps.get_tensor(sites[0]), 
                             mps.get_tensor(sites[1]),
                             tf.conj(conj_mps.get_tensor(sites[0])), tf.conj(conj_mps.get_tensor(sites[1]))],
                            [[5,4, -1,3], [5, -3, 1], [1,-4, 6], [4,3,2], [2,-2,6]])
@@ -163,15 +163,15 @@ class OverlapMinimizer:
         assert(site>0)
         assert(len(mps)%2==0)
         if site == (len(mps) - 1):
-            right_envs[site - 1] = tn.ncon([mps.get_tensor(site), 
+            right_envs[site - 1] = misc_mps.ncon([mps.get_tensor(site), 
                                             tf.conj(conj_mps.get_tensor(site)), gates[(site-1,site)]],
                                            [[-1,2,1],[-2,3,1],[-4,3,-3,2]])
         elif (site < len(mps) - 1) and (site % 2 == 0):
-            right_envs[site - 1] = tn.ncon([right_envs[site], mps.get_tensor(site), 
+            right_envs[site - 1] = misc_mps.ncon([right_envs[site], mps.get_tensor(site), 
                                             tf.conj(conj_mps.get_tensor(site)), gates[(site-1,site)]],
                                            [[1,3,2,5],[-1,2,1],[-2,4,3],[-4,4,-3,5]])
         elif (site < len(mps) - 1) and (site % 2 == 1):
-            right_envs[site - 1] = tn.ncon([right_envs[site], mps.get_tensor(site), 
+            right_envs[site - 1] = misc_mps.ncon([right_envs[site], mps.get_tensor(site), 
                                             tf.conj(conj_mps.get_tensor(site)), gates[(site-1,site)]],
                                            [[1,4,3,5],[-1,2,1],[-2,5,4],[-4,3,-3,2]])
     @staticmethod            
@@ -182,51 +182,79 @@ class OverlapMinimizer:
         assert(len(mps)%2==0)
             
         if site == 0:
-            left_envs[site + 1] = tn.ncon([mps.get_tensor(site), 
+            left_envs[site + 1] = misc_mps.ncon([mps.get_tensor(site), 
                                              tf.conj(conj_mps.get_tensor(site)), gates[(site, site + 1)]],
                                             [[1,2,-1],[1,3, -2],[3, -4, 2, -3]])        
         elif (site > 0) and (site % 2 == 0):
-            left_envs[site + 1] = tn.ncon([left_envs[site], mps.get_tensor(site), 
+            left_envs[site + 1] = misc_mps.ncon([left_envs[site], mps.get_tensor(site), 
                                            tf.conj(conj_mps.get_tensor(site)), gates[(site, site + 1)]],
                                           [[1,4,3,5], [1,2,-1], [4,5,-2], [3,-4,2,-3]])                                          
         elif (site > 0) and (site % 2 == 1):
-            left_envs[site + 1] = tn.ncon([left_envs[site], mps.get_tensor(site), 
+            left_envs[site + 1] = misc_mps.ncon([left_envs[site], mps.get_tensor(site), 
                                              tf.conj(conj_mps.get_tensor(site)), gates[(site, site + 1)]],
                                              [[1,3,2,5],[1,2,-1],[3,4,-2],[4,-4,5,-3]])  
     @staticmethod            
     def get_env(sites,left_envs,right_envs, mps, conj_mps):
         """
-        
         """
         assert((len(mps) % 2) == 0)
         if (sites[0] > 0) and (sites[1] < len(mps) - 1) and (sites[0] % 2 == 0):
-            return tn.ncon([left_envs[sites[0]], mps.get_tensor(sites[0]), 
+            return misc_mps.ncon([left_envs[sites[0]], mps.get_tensor(sites[0]), 
                        mps.get_tensor(sites[1]), right_envs[sites[1]], 
                        tf.conj(conj_mps.get_tensor(sites[0])), tf.conj(conj_mps.get_tensor(sites[1]))],
                       [[7,1,-1,2], [7,-3,6], [6,-4,8], [8,4,-2,3], [1,2,5], [5,3,4]])
         elif (sites[0] > 0) and (sites[1] < len(mps) - 1) and (sites[0] % 2 == 1):
-            return tn.ncon([left_envs[sites[0]], mps.get_tensor(sites[0]), 
+            return misc_mps.ncon([left_envs[sites[0]], mps.get_tensor(sites[0]), 
                             mps.get_tensor(sites[1]), right_envs[sites[1]], 
                             tf.conj(conj_mps.get_tensor(sites[0])), tf.conj(conj_mps.get_tensor(sites[1]))],
                            [[1, 7, 2, -3], [1, 2, 3], [3, 4, 5], [5, 8, 4, -4], [7, -1, 6], [6, -2, 8]])    
         elif sites[0] == 0:
-            return tn.ncon([mps.get_tensor(sites[0]), 
+            return misc_mps.ncon([mps.get_tensor(sites[0]), 
                             mps.get_tensor(sites[1]), right_envs[sites[1]], 
                             tf.conj(conj_mps.get_tensor(sites[0])), tf.conj(conj_mps.get_tensor(sites[1]))],
                            [[1, -3, 2], [2, -4, 3], [3, 4, -2, 5], [1, -1, 6], [6, 5, 4]])  
         elif sites[1] == (len(mps) - 1):
-            return tn.ncon([left_envs[sites[0]], mps.get_tensor(sites[0]), 
+            return misc_mps.ncon([left_envs[sites[0]], mps.get_tensor(sites[0]), 
                             mps.get_tensor(sites[1]),
                             tf.conj(conj_mps.get_tensor(sites[0])), tf.conj(conj_mps.get_tensor(sites[1]))],
                            [[5,4, -1,3], [5, -3, 1], [1,-4, 6], [4,3,2], [2,-2,6]])
+
+
+    @staticmethod            
+    def get_single_env(sites,left_env,right_env, mps_tensor_l, mps_tensor_r, conj_mps_tensor_l,  conj_mps_tensor_r):
+        """
+        """
+        assert((len(mps) % 2) == 0)
+        if (sites[0] > 0) and (sites[1] < len(mps) - 1) and (sites[0] % 2 == 0):
+            return misc_mps.ncon([left_env, mps_tensor_l, 
+                            mps_tensor_r, right_env,
+                            tf.conj(conj_mps_tensor_l), tf.conj(conj_mps_tensor_r)],
+                           [[7,1,-1,2], [7,-3,6], [6,-4,8], [8,4,-2,3], [1,2,5], [5,3,4]])
+        
+        elif (sites[0] > 0) and (sites[1] < len(mps) - 1) and (sites[0] % 2 == 1):
+            return misc_mps.ncon([left_env, mps_tensor_l, 
+                            mps_tensor_r, right_env, 
+                            tf.conj(conj_mps_tensor_l), tf.conj(conj_mps_tensor_r)],
+                            [[1, 7, 2, -3], [1, 2, 3], [3, 4, 5], [5, 8, 4, -4], [7, -1, 6], [6, -2, 8]])    
+        elif sites[0] == 0:
+            return misc_mps.ncon([mps_tensor_l,
+                            mps_tensor_r, right_env,
+                            tf.conj(conj_mps_tensor_l), tf.conj(conj_mps_tensor_r)],
+                           [[1, -3, 2], [2, -4, 3], [3, 4, -2, 5], [1, -1, 6], [6, 5, 4]])  
+        elif sites[1] == (len(mps) - 1):
+            return misc_mps.ncon([left_env, mps_tensor_l,
+                            mps_tensor_r,
+                            tf.conj(conj_mps_tensor_l), tf.conj(conj_mps_tensor_r)],
+                           [[5,4, -1,3], [5, -3, 1], [1,-4, 6], [4,3,2], [2,-2,6]])
+        
     @staticmethod        
     def overlap(site,left_envs,right_envs, mps, conj_mps):
         if site%2 == 1:
-            return tn.ncon([left_envs[site], mps.get_tensor(site), tf.conj(conj_mps.get_tensor(site)),
+            return misc_mps.ncon([left_envs[site], mps.get_tensor(site), tf.conj(conj_mps.get_tensor(site)),
                             right_envs[site]],
                            [[1,5,2,4], [1,2,3], [5,6,7], [3,7,4,6]])
         elif site%2 == 0:
-            return tn.ncon([left_envs[site], mps.get_tensor(site), tf.conj(conj_mps.get_tensor(site)),
+            return misc_mps.ncon([left_envs[site], mps.get_tensor(site), tf.conj(conj_mps.get_tensor(site)),
                             right_envs[site]],
                            [[1,5,4,6], [1,2,3], [5,6,7], [3,7,2,4]])
     @staticmethod
@@ -243,11 +271,29 @@ class OverlapMinimizer:
         ut, st, vt = np.linalg.svd(
             np.reshape(wIn, (shape[0] * shape[1], shape[2] * shape[3])),
             full_matrices=False)
-        #mat = tn.ncon([ut, vt], [[-1, 1], [1, -2]])
-        mat = tn.ncon([np.conj(ut), np.conj(vt)], [[-1, 1], [1,-2]])        
+        #mat = misc_mps.ncon([ut, vt], [[-1, 1], [1, -2]])
+        mat = misc_mps.ncon([np.conj(ut), np.conj(vt)], [[-1, 1], [1,-2]])        
         return tf.reshape(mat, shape)
     #@staticmethod
-    #def gradient_update_unitary(sites,left_envs,right_envs, mps, conj_mps):
+    def gradient_update_unitary(sites,left_env,right_env, mps_tensor, conj_mps_tensor, gate):
+        left_env = left_envs[sites[0]]
+        right_env = right_envs[sites[1]]
+        mps_tensor_l = self.mps.get_tensor(sites[0])
+        mps_tensor_r = self.mps.get_tensor(sites[1])
+        conj_mps_tensor_l = self.conj_mps.get_tensor(sites[0])
+        conj_mps_tensor_r = self.conj_mps.get_tensor(sites[1])        
+        
+        env = self.get_single_env(sites,left_env,right_env, mps_tensor_l, mps_tensor_r, conj_mps_tensor_l, conj_mps_tensor_r)
+        print(env)
+        
+    def absorb_gates(self):
+        for site in range(0,len(self.mps)-1,2):
+            self.mps.apply_2site(self.gates[(site, site + 1)], site)
+        for site in range(1,len(self.mps)-2,2):
+            self.mps.apply_2site(self.gates[(site, site + 1)], site)
+        self.mps.position(0)
+        self.mps.position(len(self.mps))
+        self.mps.position(0)
         
     def minimize_layerwise(self,num_iterations, alpha = 1.0, verbose=0):
         """
