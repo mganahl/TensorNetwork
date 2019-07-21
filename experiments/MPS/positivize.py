@@ -197,10 +197,10 @@ def positivize(minimizer, samples, ref_mps, num_its=100,
         
     """
     for it in range(num_its):
-        minimizer.minimize_even_batched(samples= samples,num_sweeps=num_minimzer_sweeps, ref_mps=ref_mps, 
+        minimizer.minimize_even(samples= samples,num_sweeps=num_minimzer_sweeps, ref_mps=ref_mps, 
                                         alpha_gates=alpha_gates, 
                                         alpha_samples=alpha_samples, alpha_ref_mps=alpha_ref_mps, verbose=1)
-        minimizer.minimize_odd_batched(samples=samples, num_sweeps=num_minimzer_sweeps, ref_mps=ref_mps,  
+        minimizer.minimize_odd(samples=samples, num_sweeps=num_minimzer_sweeps, ref_mps=ref_mps,  
                                        alpha_gates=alpha_gates, 
                                        alpha_samples=alpha_samples, alpha_ref_mps=alpha_ref_mps, verbose=1)
         
@@ -217,12 +217,12 @@ def positivize_from_self_sampling(minimizer, ref_mps=None, Dmax=20,num_its=100, 
     pos_mps = minimizer.absorb_gates(Dmax=Dmax)
     for it in range(num_its):
         samples = pos_mps.generate_samples(n_samples)
-        minimizer.minimize_even_batched(samples= samples,num_sweeps=num_minimzer_sweeps, ref_mps=ref_mps, 
+        minimizer.minimize_even(samples= samples,num_sweeps=num_minimzer_sweeps, ref_mps=ref_mps, 
                                         alpha_gates=alpha_gates, 
                                         alpha_samples=alpha_samples, alpha_ref_mps=alpha_ref_mps, verbose=1)  
         pos_mps = minimizer.absorb_gates(Dmax=Dmax)
         samples = pos_mps.generate_samples(n_samples)
-        minimizer.minimize_odd_batched(samples=samples, num_sweeps=num_minimzer_sweeps, ref_mps=ref_mps,  
+        minimizer.minimize_odd(samples=samples, num_sweeps=num_minimzer_sweeps, ref_mps=ref_mps,  
                                        alpha_gates=alpha_gates, 
                                        alpha_samples=alpha_samples, alpha_ref_mps=alpha_ref_mps, verbose=1)
         pos_mps = minimizer.absorb_gates(Dmax=Dmax)
