@@ -606,7 +606,7 @@ class OverlapMinimizer:
                     print()
 
 
-    def minimize_odd(self, samples,  ref_mps=None, num_sweeps, alpha_gates=0.0, alpha_samples=1.0, alpha_ref_mps=1.0, verbose=0):
+    def minimize_odd(self, samples,  ref_mps=None, num_sweeps=10, alpha_gates=0.0, alpha_samples=1.0, alpha_ref_mps=1.0, verbose=0):
         """
         minimize the overlap by optimizing over the odd two-body unitaries.
         minimization runs from left to right and changes odd gates one at at time.
