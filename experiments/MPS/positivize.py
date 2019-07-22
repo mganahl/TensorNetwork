@@ -18,7 +18,7 @@ import copy
 import os
 import itertools
 import matplotlib
-matplotlib.use('TkAgg')
+#matplotlib.use('TkAgg')
 from matplotlib import pyplot as plt
 import sign_mps_data.readMPS as readMPS
 plt.rc('text', usetex=True)
@@ -35,11 +35,6 @@ def generate_basis(N):
     basis = np.stack(basis,axis=0)
     return basis
 
-def haar_random_unitary(shape):
-    Q, R = np.linalg.qr(np.random.random_sample(shape) - 0.5)
-    diagr = np.diag(R)
-    Lambda = np.diag(diagr/np.abs(diagr))
-    return Q.dot(Lambda)
 
 def get_product_states(sigmas,d):
     mpss = []
@@ -126,42 +121,40 @@ def read_and_convert_to_tf(prefix,  dtype=tf.float64):
     return [tf.transpose(tf.convert_to_tensor(tensors[n]),(0,2,1)) for n in range(len(tensors))] #the index order of the PyTeN and TensorNetwork MPS is different
 
 #%matplotlib qt
-def analyze_positivity(mps, nsamples=1000, discard_threshold=1E-13, show_real=True,show_imag=False, fignum_real=0, fignum_imag=1):
+def analyze_positivity(mps, nsamples=1000, show=True, fignum=0, bins=100):
     """
     analyze the MPS wavefunction by  sampling `nsamples` and measuring the average sign
     """
-    samples=mps.generate_samples(nsamples)
-    amps = np.array(mps.get_amplitude(samples))
-    amps[np.abs(amps)<discard_threshold] = 0.0
-    #print(np.real(amps))
-    if show_real:
-        plt.figure(fignum_real)
-
-        plt.clf()
-        plt.title('real part')
-        plt.hist(np.real(amps), bins=100)
-        plt.draw()
-        plt.show()
-        plt.pause(0.01)        
-    if show_imag:
-        if np.linalg.norm(np.imag(amps)>1E-10):
-            plt.figure(fignum_imag)
+    if mps.dtype in (tf.float64, tf.float32):
+        samples=mps.generate_samples(nsamples)
+        signs, log_amps = mps.get_log_amplitude(samples)
+        log_amps = log_amps.numpy()
+        signs = signs.numpy()
+        pos_log_amps = log_amps[signs>0]
+        neg_log_amps = log_amps[signs<0]
+        if show:
+            plt.figure(fignum)
+            #ax = plt.subplot(1,2,1)
             plt.clf()
-            plt.title('imag part')
-            plt.hist(np.imag(amps), bins=100)
+            plt.title(r'log-amplitudes; min ($\log$(amps))={0}, max($\log$(amp))={1}'.format(np.round(np.min(log_amps), 2),np.round(np.max(log_amps), 2)))
+            plt.hist(-signs*log_amps, bins=bins)
+            plt.xlabel(r'-Sign(amp) $\log (\vert$amp$\vert)$')
+            plt.ylabel('frequency')
+            # ax = plt.subplot(1,2,2)
+            # plt.title('negative log-amplitudes')
+            # plt.hist(neg_log_amps, bins=bins)
             plt.draw()
             plt.show()
-            plt.pause(0.01)
-
-    av_real_sign = np.mean(np.sign(np.real(amps[amps!=0])))
-    #av_imag_sign = np.mean(np.sign(np.imag(amps[amps!=0])))
-    print('#############################')
-    print('   all samples > 0: ',np.all(amps>=0))
-    print('   all samples < 0: ', np.all(amps<=0))
-    print('   <sgn>={0}'.format(av_real_sign))#,av_imag_sign))
-    print('#############################')
-    print()
-    return av_real_sign# + 1j* av_imag_sign
+            plt.pause(0.01)        
+        av_sign = np.mean(signs)
+        print()
+        print('#############################')
+        print('   all samples >= 0: ',np.all(signs>=0))
+        print('   all samples <= 0: ', np.all(signs<=0))
+        print('   <sgn> = {0}'.format(av_sign))
+        print('#############################')
+        print()
+        return av_sign
 
 def equal_superposition(ds,dtype=np.float64):
     """
@@ -214,18 +207,18 @@ def positivize_from_self_sampling(minimizer, ref_mps=None, Dmax=20,num_its=100, 
     one layer of even and one layer of odd 
     """
 
-    pos_mps = minimizer.absorb_gates(Dmax=Dmax)
+    pos_mps, tw = minimizer.absorb_two_body_gates(Dmax=Dmax)
     for it in range(num_its):
         samples = pos_mps.generate_samples(n_samples)
         minimizer.minimize_even(samples= samples,num_sweeps=num_minimzer_sweeps, ref_mps=ref_mps, 
                                         alpha_gates=alpha_gates, 
                                         alpha_samples=alpha_samples, alpha_ref_mps=alpha_ref_mps, verbose=1)  
-        pos_mps = minimizer.absorb_gates(Dmax=Dmax)
+        pos_mps, tw = minimizer.absorb_two_body_gates(Dmax=Dmax)
         samples = pos_mps.generate_samples(n_samples)
         minimizer.minimize_odd(samples=samples, num_sweeps=num_minimzer_sweeps, ref_mps=ref_mps,  
                                        alpha_gates=alpha_gates, 
                                        alpha_samples=alpha_samples, alpha_ref_mps=alpha_ref_mps, verbose=1)
-        pos_mps = minimizer.absorb_gates(Dmax=Dmax)
+        pos_mps, tw = minimizer.absorb_two_body_gates(Dmax=Dmax)
         
     return minimizer
 
