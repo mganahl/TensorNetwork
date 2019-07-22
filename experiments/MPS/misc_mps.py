@@ -26,6 +26,13 @@ from scipy.sparse.linalg import LinearOperator, lgmres, eigs
 ncon_defuned = tf.contrib.eager.defun(ncon_tn, autograph=False)
 
 
+def haar_random_unitary(shape):
+    Q, R = np.linalg.qr(np.random.random_sample(shape) - 0.5)
+    diagr = np.diag(R)
+    Lambda = np.diag(diagr/np.abs(diagr))
+    return Q.dot(Lambda)
+
+  
 def transfer_op(As, Bs, direction, x):
   """
     (mixed) transfer operator for a list of mps tensors
@@ -422,20 +429,20 @@ def prepare_tensor_SVD(tensor, direction, D=None, thresh=1E-32, normalize=False)
     if direction in (1, 'l', 'left'):
         net = tn.TensorNetwork()
         node = net.add_node(tensor)
-        u_node, s_node, v_node, _ = net.split_node_full_svd(node, [node[0], node[1]], [node[2]], max_singular_values=D, max_truncation_err=thresh)
+        u_node, s_node, v_node, tw = net.split_node_full_svd(node, [node[0], node[1]], [node[2]], max_singular_values=D, max_truncation_err=thresh)
         Z = tf.linalg.norm(s_node.tensor)
         if normalize:
           s_node.tensor /= Z
-        return u_node.tensor, s_node.tensor, v_node.tensor, Z
+        return u_node.tensor, s_node.tensor, v_node.tensor, Z, tw
 
     if direction in (-1, 'r', 'right'):
         net = tn.TensorNetwork()
         node = net.add_node(tensor)
-        u_node, s_node, v_node, _ = net.split_node_full_svd(node, [node[0]], [node[1], node[2]], max_singular_values=D, max_truncation_err=thresh)
+        u_node, s_node, v_node, tw = net.split_node_full_svd(node, [node[0]], [node[1], node[2]], max_singular_values=D, max_truncation_err=thresh)
         Z = tf.linalg.norm(s_node.tensor)
         if normalize:        
           s_node.tensor /= Z
-        return u_node.tensor, s_node.tensor, v_node.tensor, Z
+        return u_node.tensor, s_node.tensor, v_node.tensor, Z, tw
 
 
 
