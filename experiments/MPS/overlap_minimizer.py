@@ -120,8 +120,21 @@ class OverlapMinimizer:
         self.left_envs_batched = {}        
 
 
-
     def reset_two_body_gates(self, which='identities'):
+        """
+        reset the two body gates
+        Args:
+            which (str):   the type to which gates should be reset
+                           `which` can take values in {'eye','e', 'identities', 'i'} for identity operators
+                           or in ('h','haar') for Haar random unitaries
+        Raises:
+            ValueError
+        """
+        self.two_body_gates = {}
+        self.reset_even_two_body_gates(which)
+        self.reset_odd_two_body_gates(which)        
+        
+    def reset_even_two_body_gates(self, which='identities'):
         """
         reset the two body gates
         Args:
@@ -133,17 +146,43 @@ class OverlapMinimizer:
         """
         ds = self.mps.d        
         if which in ('i', 'identities', 'eye', 'e'):
-            self.two_body_gates={(site, site+1): tf.reshape(tf.eye(ds[site]*ds[site+1], dtype=self.mps.dtype), 
-                                                            (ds[site], ds[site+1], ds[site], ds[site+1]))
-                                 for site in range(0,len(self.mps)-1)}
+            for site in range(0,len(self.mps) - 1, 2):
+                self.two_body_gates[(site, site+1)] = tf.reshape(tf.eye(ds[site]*ds[site+1], dtype=self.mps.dtype), 
+                                                                 (ds[site], ds[site+1], ds[site], ds[site+1]))
+                
 
         elif which in ('h','haar'):
-            self.two_body_gates = {(site, site+1): tf.reshape(misc_mps.haar_random_unitary((ds[site] * ds[site+1], ds[site] * ds[site+1])), 
-                                                              (ds[site], ds[site+1], ds[site], ds[site+1]))
-                                   for site in range(0,len(self.mps)-1)}
+            for site in range(0,len(self.mps) - 1, 2):
+                self.two_body_gates[(site, site+1)] = tf.reshape(misc_mps.haar_random_unitary((ds[site] * ds[site+1], ds[site] * ds[site+1])), 
+                                                                (ds[site], ds[site+1], ds[site], ds[site+1]))
         else:
             raise ValueError('unrecognized value which = {0}'.format(which))
 
+
+    def reset_odd_two_body_gates(self, which='identities'):
+        """
+        reset the two body gates
+        Args:
+            which (str):   the type to which gates should be reset
+                           `which` can take values in {'eye','e', 'identities', 'i'} for identity operators
+                           or in ('h','haar') for Haar random unitaries
+        Raises:
+            ValueError
+        """
+        ds = self.mps.d        
+        if which in ('i', 'identities', 'eye', 'e'):
+            for site in range(1, len(self.mps) - 2, 2):
+                self.two_body_gates[(site, site+1)] = tf.reshape(tf.eye(ds[site]*ds[site+1], dtype=self.mps.dtype), 
+                                                                 (ds[site], ds[site+1], ds[site], ds[site+1]))
+
+
+        elif which in ('h','haar'):
+            for site in range(1, len(self.mps) - 2, 2):
+                self.two_body_gates[(site, site+1)] = tf.reshape(misc_mps.haar_random_unitary((ds[site] * ds[site+1], ds[site] * ds[site+1])), 
+                                                                 (ds[site], ds[site+1], ds[site], ds[site+1]))
+        else:
+            raise ValueError('unrecognized value which = {0}'.format(which))
+        
     def reset_one_body_gates(self, which='eye'):
         """
         reset the two one gates
@@ -857,6 +896,7 @@ class OverlapMinimizer:
             samples (tf.Tensor of shape (n_samples, N):    basis-state samples
             ref_mps (FiniteMPSCentralGauge):               a reference mps 
             num_sweeps (int): number of optimiztion sweeps
+            sites (iterable): the sites that should be optimized, e.g. `sites=range(0,N-1,2)` optimizes all even sites
             alpha_gates (float): see below
             alpha_samples (float): see below
             alpha_ref_mos (float): the three `alpha_` arguments determine the mixing of the update
@@ -887,12 +927,11 @@ class OverlapMinimizer:
             for site in range(len(self.mps)):
                 if site in sites:
                     env = self.one_body_gates[site] * alpha_gates
-                    
                     if samples != None:                
                         env += (alpha_samples * self.get_one_body_env_batched(site, self.left_envs_batched, self.right_envs_batched,
                                                                               self.mps, samples))
                     if ref_mps !=None:
-                        env += alpha_ref_mps * self.get_one_body_env(site, self.left_envs, self.right_envs, self.mps, ref_mps)
+                        env += (alpha_ref_mps * self.get_one_body_env(site, self.left_envs, self.right_envs, self.mps, ref_mps))
                     self.one_body_gates[site] = self.one_body_update_svd_numpy(env)
                 if site < (len(self.mps) - 1):                    
                     if samples != None:                                
