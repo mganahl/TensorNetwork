@@ -1314,15 +1314,17 @@ class MPSUnitCellCentralGauge(AbstractMPSUnitCell):
         Returns:
             None
         """
+    trunc_weight = 0.0
     if bond > self.pos:
       self._tensors[self.pos] = misc_mps.ncon(
           [self.mat, self._tensors[self.pos]], [[-1, 1], [1, -2, -3]])
 
       for n in range(self.pos, bond):
         if (D is not None) or (thresh > 1E-16):
-          tensor, s, v, _ = misc_mps.prepare_tensor_SVD(
+          tensor, s, v, _, tw = misc_mps.prepare_tensor_SVD(
             self._tensors[n], direction=1, D=D, thresh=thresh, normalize=normalize)
           mat = misc_mps.ncon([s,v],[[-1,1],[1,-2]])
+          trunc_weight += tf.math.reduce_sum(tf.pow(tw, 2))          
         else:
           tensor, mat, _ = misc_mps.prepare_tensor_QR(
             self._tensors[n], direction=1)
@@ -1338,10 +1340,10 @@ class MPSUnitCellCentralGauge(AbstractMPSUnitCell):
           [[-1, -2, 1], [1, -3]])
       for n in range(self.pos - 1, bond - 1, -1):
         if (D is not None) or (thresh > 1E-16):        
-          u, s, tensor, _ = misc_mps.prepare_tensor_SVD(
+          u, s, tensor, _ , tw= misc_mps.prepare_tensor_SVD(
             self._tensors[n], direction=-1, D=D, thresh=thresh, normalize=normalize)
           mat = misc_mps.ncon([u,s],[[-1,1],[1,-2]])
-
+          trunc_weight += tf.math.reduce_sum(tf.pow(tw, 2))
         else:        
           mat, tensor, _ = misc_mps.prepare_tensor_QR(
             self._tensors[n], direction=-1)
@@ -1352,6 +1354,8 @@ class MPSUnitCellCentralGauge(AbstractMPSUnitCell):
                                                [[-1, -2, 1], [1, -3]])
     self.pos = bond
 
+    return trunc_weight
+  
   @staticmethod
   def ortho_deviation(tensor, which):
     """
@@ -1606,8 +1610,7 @@ class FiniteMPSCentralGauge(MPSUnitCellCentralGauge, AbstractFiniteMPS):
 
   def get_amplitude(self, sigmas):
       """
-      compute the amplitude of configuration `sigma`
-      This is not very efficient
+      compute the amplitudes of configurations `sigmas`
       Args:
         sigma (tf.Tensor of shape (n_samples, N):  basis configuration
       Returns:
@@ -1622,6 +1625,27 @@ class FiniteMPSCentralGauge(MPSUnitCellCentralGauge, AbstractFiniteMPS):
         tmp = misc_mps.ncon([self.get_tensor(site), tf.one_hot(sigmas[:,site], ds[site], dtype=dtype)],[[-2, 1, -3], [-1, 1]]) #(Nt, Dl, Dr)
         left = tf.matmul(left, tmp) #(Nt, 1, Dr)
       return tf.squeeze(left)
+    
+  def get_log_amplitude(self, sigmas):
+      """
+      compute the phases and log-abs-amplitudes of configurations `sigmas`
+      Args:
+        sigma (tf.Tensor of shape (n_samples, N):  basis configuration
+      Returns:
+        tf.Tensor of shape (n_samples): the amplitudes
+
+      """
+      ds = self.d
+      dtype = self.dtype
+      left = tf.expand_dims(tf.ones(shape=(sigmas.shape[0], self.D[0]),dtype=dtype), 1)  #(Nt, 1, Dl)
+      log_norms = tf.zeros(shape = [sigmas.shape[0]], dtype=self.dtype)
+      for site in range(len(self)):
+        tmp = misc_mps.ncon([self.get_tensor(site), tf.one_hot(sigmas[:,site], ds[site], dtype=dtype)],[[-2, 1, -3], [-1, 1]]) #(Nt, Dl, Dr)
+        left = tf.matmul(left, tmp) #(Nt, 1, Dr)
+        norms = tf.linalg.norm(left, axis = 2) #shape (Nt, 1)
+        left /= tf.expand_dims(norms,2)
+        log_norms += tf.squeeze(tf.math.log(norms))
+      return tf.squeeze(left), log_norms
   
   def generate_samples(self, num_samples):
       """
