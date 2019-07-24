@@ -121,28 +121,23 @@ def read_and_convert_to_tf(prefix,  dtype=tf.float64):
     return [tf.transpose(tf.convert_to_tensor(tensors[n]),(0,2,1)) for n in range(len(tensors))] #the index order of the PyTeN and TensorNetwork MPS is different
 
 #%matplotlib qt
-def analyze_positivity(mps, nsamples=1000, show=True, fignum=0, bins=100):
+def analyze_positivity(mps, nsamples=1000, show=True, fignum=0, bins=100, verbose=0):
     """
     analyze the MPS wavefunction by  sampling `nsamples` and measuring the average sign
     """
     if mps.dtype in (tf.float64, tf.float32):
-        samples=mps.generate_samples(nsamples)
+        samples=mps.generate_samples(nsamples, verbose=verbose)
         signs, log_amps = mps.get_log_amplitude(samples)
         log_amps = log_amps.numpy()
         signs = signs.numpy()
-        pos_log_amps = log_amps[signs>0]
-        neg_log_amps = log_amps[signs<0]
         if show:
             plt.figure(fignum)
-            #ax = plt.subplot(1,2,1)
             plt.clf()
             plt.title(r'log-amplitudes; min ($\log$(amps))={0}, max($\log$(amp))={1}'.format(np.round(np.min(log_amps), 2),np.round(np.max(log_amps), 2)))
             plt.hist(-signs*log_amps, bins=bins)
             plt.xlabel(r'-Sign(amp) $\log (\vert$amp$\vert)$')
             plt.ylabel('frequency')
-            # ax = plt.subplot(1,2,2)
-            # plt.title('negative log-amplitudes')
-            # plt.hist(neg_log_amps, bins=bins)
+            plt.tight_layout()            
             plt.draw()
             plt.show()
             plt.pause(0.01)        
@@ -156,6 +151,49 @@ def analyze_positivity(mps, nsamples=1000, show=True, fignum=0, bins=100):
         print()
         return av_sign
 
+    if mps.dtype ==tf.complex128:
+        samples=mps.generate_samples(nsamples, verbose=verbose)
+        phases, log_amps = mps.get_log_amplitude(samples)
+        log_amps = log_amps.numpy()
+        phases = phases.numpy()
+        if show:
+            # plt.figure(fignum)
+            # plt.clf()
+            # plt.title(r'log-amplitudes; min ($\log$(amps))={0}, max($\log$(amp))={1}'.format(np.round(np.min(log_amps), 2),np.round(np.max(log_amps), 2)))
+            # plt.scatter(np.real(phases), np.imag(phases))
+            # plt.xlim([-1.2, 1.2])
+            # plt.ylim([-1.2, 1.2])
+            # plt.draw()
+            # plt.show()
+            # plt.pause(0.01)
+            
+            plt.figure(fignum)
+            plt.clf()            
+            plt.subplot(2,1,1)
+            plt.title(r'log-amplitudes; min ($\log$(amps))={0}, max($\log$(amp))={1}'.format(np.round(np.min(log_amps), 2),np.round(np.max(log_amps), 2)))
+            plt.hist(-np.real(phases* log_amps), bins=bins)
+            plt.xlabel(r'$\Re$(amp) $\log (\vert$amp$\vert)$')
+            plt.ylabel('frequency')
+            plt.subplot(2,1,2)
+            plt.hist(-np.imag(phases * log_amps), bins=bins)
+            plt.xlabel(r'$\Im$(amp) $\log (\vert$amp$\vert)$')            
+            plt.ylabel('frequency')
+            plt.tight_layout()
+            plt.draw()
+            plt.show()
+            plt.pause(0.01)        
+            
+        av_sign = np.mean(np.real(phases)) + 1j * np.mean(np.imag(phases))
+        print()
+        print('#############################')
+        print('   all samples >= 0: N/A')
+        print('   all samples <= 0: N/A')
+        print('   <sgn> = {0}'.format(av_sign))
+        print('#############################')
+        print()
+        return av_sign
+
+    
 def equal_superposition(ds,dtype=np.float64):
     """
     return mps tensors correpsonding to the equal superposition of all basis states
@@ -169,56 +207,84 @@ def equal_superposition_tf(ds,dtype=tf.float64):
 
 
 
-def positivize(minimizer, samples, ref_mps, num_its=100, 
-               num_minimzer_sweeps=2,alpha_gates=0.0,
-               alpha_samples=1, alpha_ref_mps=1):
+def positivize(minimizer, ref_mps=None, num_its=100, num_minimizer_sweeps_even=2, num_minimizer_sweeps_odd=2,
+               num_minimizer_sweeps_one_body=2,
+               alpha_gates=0.0, sites=None,
+               alpha_ref_mps=1):
     """
     runs a positivation using `samples` and `ref_mps`
     one layer of even and one layer of odd unitaries are optimized layer by layer
     see OverlapMinimizer docstring for more information
     Args:
         minimizer (OverlapMinimizer):     the overlap minimizer object
-        samples (tf.Tensor of shape (n_samples, N):    basis-state samples
         ref_mps (FiniteMPSCentralGauge):               a reference mps 
         num_its (int): number of iterations; one iteration consists of an even and an odd layer update
-        num_sweeps (int): number of optimiztion sweeps of minimizer
+        num_minimizer_sweeps_even (int): number of optimization sweeps over even gates in minimizer
+        num_minimizer_sweeps_odd (int): number of optimization sweeps over odd gates in minimizer
+        num_minimizer_sweeps_one_body (int): number of optimization sweeps over one-body gates in minimizer
+        sites (iterable or None):  the sites on which one-body gates should be optimized
         alpha_gates (float): see below
-        alpha_samples (float): see below
-        alpha_ref_mos (float): the three `alpha_` arguments determine the mixing of the update
+        alpha_ref_mps (float): the three `alpha_` arguments determine the mixing of the update
                                the new gate is given by `alpha_gate` * old_gate + `alpha_samples` * sample_update + `alpha_ref_mps` * ref_mps_udate
-        verbose (int):         verbosity flag; larger means more output
-        
     """
     for it in range(num_its):
-        minimizer.minimize_even(samples= samples,num_sweeps=num_minimzer_sweeps, ref_mps=ref_mps, 
-                                        alpha_gates=alpha_gates, 
-                                        alpha_samples=alpha_samples, alpha_ref_mps=alpha_ref_mps, verbose=1)
-        minimizer.minimize_odd(samples=samples, num_sweeps=num_minimzer_sweeps, ref_mps=ref_mps,  
-                                       alpha_gates=alpha_gates, 
-                                       alpha_samples=alpha_samples, alpha_ref_mps=alpha_ref_mps, verbose=1)
-        
+        if num_minimizer_sweeps_one_body > 0:
+            minimizer.minimize_one_body(samples=None, num_sweeps=num_minimizer_sweeps_one_body, ref_mps=ref_mps,  
+                                        alpha_gates=alpha_gates, sites=sites,
+                                        alpha_ref_mps=alpha_ref_mps, verbose=1)
+        if num_minimizer_sweeps_even >0:
+            minimizer.minimize_even(samples=None,num_sweeps=num_minimizer_sweeps_even, ref_mps=ref_mps, 
+                                    alpha_gates=alpha_gates, 
+                                    alpha_ref_mps=alpha_ref_mps, verbose=1)  
+        if num_minimizer_sweeps_odd >0:
+            minimizer.minimize_odd(samples=None, num_sweeps=num_minimizer_sweeps_odd, ref_mps=ref_mps,  
+                                   alpha_gates=alpha_gates, 
+                                   alpha_ref_mps=alpha_ref_mps, verbose=1)
     return minimizer
 
-def positivize_from_self_sampling(minimizer, ref_mps=None, Dmax=20,num_its=100, num_minimzer_sweeps=2, n_samples=1000,
-                                  alpha_gates=0.0,
+def positivize_from_self_sampling(minimizer, ref_mps=None, Dmax=20,num_its=100, num_minimizer_sweeps_even=2, num_minimizer_sweeps_odd=2,
+                                  num_minimizer_sweeps_one_body=2, n_samples=1000,
+                                  alpha_gates=0.0, sites=None,
                                   alpha_samples=1, alpha_ref_mps=1):
     """
-    runs a self sampling optimization:
-    one layer of even and one layer of odd 
+    Args:
+        minimizer (OverlapMinimizer):     the overlap minimizer object
+        ref_mps (FiniteMPSCentralGauge):               a reference mps 
+        Dmax (int):  maximum bond dimension kept when contracting the gates to the the new mps to sample from
+        num_its (int): number of iterations; one iteration consists of an even and an odd layer update
+        num_minimizer_sweeps_even (int): number of optimization sweeps over even gates in minimizer
+        num_minimizer_sweeps_odd (int): number of optimization sweeps over odd gates in minimizer
+        num_minimizer_sweeps_one_body (int): number of optimization sweeps over one-body gates in minimizer
+        n_samples (int):              number of samples to draw from U*mps for optimization
+        sites (iterable or None):  the sites on which one-body gates should be optimized
+        alpha_gates (float): see `alpha_ref_mps`
+        alpha_samples (float): see `alpha_ref_mps`
+        alpha_ref_mps (float): the three `alpha_` arguments determine the mixing of the update
+                               the new gate is given by `alpha_gate` * old_gate + `alpha_samples` * sample_update + `alpha_ref_mps` * ref_mps_udate
     """
 
-    pos_mps, tw = minimizer.absorb_two_body_gates(Dmax=Dmax)
+    pos_mps, tw = minimizer.absorb_gates(Dmax=Dmax)
     for it in range(num_its):
-        samples = pos_mps.generate_samples(n_samples)
-        minimizer.minimize_even(samples= samples,num_sweeps=num_minimzer_sweeps, ref_mps=ref_mps, 
-                                        alpha_gates=alpha_gates, 
-                                        alpha_samples=alpha_samples, alpha_ref_mps=alpha_ref_mps, verbose=1)  
-        pos_mps, tw = minimizer.absorb_two_body_gates(Dmax=Dmax)
-        samples = pos_mps.generate_samples(n_samples)
-        minimizer.minimize_odd(samples=samples, num_sweeps=num_minimzer_sweeps, ref_mps=ref_mps,  
-                                       alpha_gates=alpha_gates, 
-                                       alpha_samples=alpha_samples, alpha_ref_mps=alpha_ref_mps, verbose=1)
-        pos_mps, tw = minimizer.absorb_two_body_gates(Dmax=Dmax)
+        if num_minimizer_sweeps_one_body > 0:
+            samples = pos_mps.generate_samples(n_samples)
+            minimizer.minimize_one_body(samples=samples, num_sweeps=num_minimizer_sweeps_one_body, ref_mps=ref_mps,  
+                                        alpha_gates=alpha_gates, sites=sites,
+                                        alpha_samples=alpha_samples, alpha_ref_mps=alpha_ref_mps, verbose=1)
+            pos_mps, tw = minimizer.absorb_gates(Dmax=Dmax)
+        
+
+        if num_minimizer_sweeps_even >0:
+            samples = pos_mps.generate_samples(n_samples)
+            minimizer.minimize_even(samples= samples,num_sweeps=num_minimizer_sweeps_even, ref_mps=ref_mps, 
+                                    alpha_gates=alpha_gates, 
+                                    alpha_samples=alpha_samples, alpha_ref_mps=alpha_ref_mps, verbose=1)  
+            pos_mps, tw = minimizer.absorb_gates(Dmax=Dmax)
+        if num_minimizer_sweeps_odd >0:
+            samples = pos_mps.generate_samples(n_samples)
+            minimizer.minimize_odd(samples=samples, num_sweeps=num_minimizer_sweeps_odd, ref_mps=ref_mps,  
+                                   alpha_gates=alpha_gates, 
+                                   alpha_samples=alpha_samples, alpha_ref_mps=alpha_ref_mps, verbose=1)
+            pos_mps, tw = minimizer.absorb_gates(Dmax=Dmax)
         
     return minimizer
 
