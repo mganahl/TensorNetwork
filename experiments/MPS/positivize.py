@@ -121,12 +121,13 @@ def read_and_convert_to_tf(prefix,  dtype=tf.float64):
     return [tf.transpose(tf.convert_to_tensor(tensors[n]),(0,2,1)) for n in range(len(tensors))] #the index order of the PyTeN and TensorNetwork MPS is different
 
 #%matplotlib qt
-def analyze_positivity(mps, nsamples=1000, show=True, fignum=0, bins=100, verbose=0):
+def analyze_positivity(mps, samples=None, nsamples=1000, show=True, fignum=0, bins=100, verbose=0):
     """
     analyze the MPS wavefunction by  sampling `nsamples` and measuring the average sign
     """
     if mps.dtype in (tf.float64, tf.float32):
-        samples=mps.generate_samples(nsamples, verbose=verbose)
+        if samples is None:
+            samples=mps.generate_samples(nsamples, verbose=verbose)
         signs, log_amps = mps.get_log_amplitude(samples)
         log_amps = log_amps.numpy()
         signs = signs.numpy()
@@ -151,8 +152,9 @@ def analyze_positivity(mps, nsamples=1000, show=True, fignum=0, bins=100, verbos
         print()
         return av_sign
 
-    if mps.dtype ==tf.complex128:
-        samples=mps.generate_samples(nsamples, verbose=verbose)
+    if mps.dtype in (tf.complex128, tf.complex64):
+        if samples is None:
+            samples=mps.generate_samples(nsamples, verbose=verbose)
         phases, log_amps = mps.get_log_amplitude(samples)
         log_amps = log_amps.numpy()
         phases = phases.numpy()
@@ -183,7 +185,7 @@ def analyze_positivity(mps, nsamples=1000, show=True, fignum=0, bins=100, verbos
             plt.show()
             plt.pause(0.01)        
             
-        av_sign = np.mean(np.real(phases)) + 1j * np.mean(np.imag(phases))
+        av_sign = np.mean(np.sign(np.real(phases))) + 1j * np.mean(np.sign(np.imag(phases)))
         print()
         print('#############################')
         print('   all samples >= 0: N/A')
