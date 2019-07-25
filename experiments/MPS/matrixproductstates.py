@@ -1646,8 +1646,8 @@ class FiniteMPSCentralGauge(MPSUnitCellCentralGauge, AbstractFiniteMPS):
         left /= tf.expand_dims(norms,2)
         log_norms += tf.squeeze(tf.math.log(norms))
       return tf.squeeze(left), log_norms
-  
 
+    
 class InfiniteMPSCentralGauge(MPSUnitCellCentralGauge, AbstractInfiniteMPS):
   """
     A simple MPS class for infinite systems;
