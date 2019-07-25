@@ -26,11 +26,17 @@ from scipy.sparse.linalg import LinearOperator, lgmres, eigs
 ncon_defuned = tf.contrib.eager.defun(ncon_tn, autograph=False)
 
 
-def haar_random_unitary(shape):
-    Q, R = np.linalg.qr(np.random.random_sample(shape) - 0.5)
-    diagr = np.diag(R)
-    Lambda = np.diag(diagr/np.abs(diagr))
-    return Q.dot(Lambda)
+def haar_random_unitary(shape, dtype=tf.float64):
+  if dtype in (tf.float32, tf.float64):
+    mat = np.random.random_sample(shape) - 0.5
+  elif dtype  == tf.complex128:
+    mat = np.random.random_sample(shape) - 0.5 + 1j*(np.random.random_sample(shape) - 0.5)
+  else:
+    raise TypeError('only (tf.float32m, tf.float64, tf.complex128) types are allowed as arguments to haar_random_unitary')
+  Q, R = np.linalg.qr(mat)
+  diagr = np.diag(R)
+  Lambda = np.diag(diagr/np.abs(diagr))
+  return tf.convert_to_tensor(Q.dot(Lambda))
 
   
 def transfer_op(As, Bs, direction, x):
