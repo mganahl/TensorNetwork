@@ -1049,7 +1049,8 @@ class OverlapMinimizer:
                     C = tf.math.reduce_mean(psi_sigma, axis=0)
             elif mps.dtype in (tf.float64, tf.float32):
                 psi_sigma = misc_mps.ncon([env, tf.linalg.expm(g - tf.conj(tf.transpose(g)))],[[-1, 1,2],[1,2]])
-                log_psi = tf.math.reduce_mean(tf.math.log(psi_sigma), axis=0)                
+                log_psi = tf.math.reduce_mean(tf.math.log(psi_sigma), axis=0)
+                avsigns = np.average(np.sign(psi_sigma.numpy()))
                 if activation is not None:
                     C = tf.math.reduce_mean(activation(psi_sigma), axis=0)
                 else:
@@ -1057,7 +1058,10 @@ class OverlapMinimizer:
             else:
                 raise TypeError('unsupported dtype {0}'.format(dtype))
         g1 = tape.gradient(C, g)
-        g2 = tf.complex(tf.real(tape.gradient(log_psi, g)), tf.zeros(shape=g1.shape, dtype=g1.dtype.real_dtype))
+        if mps.dtype in (tf.complex128, tf.complex64):                        
+            g2 = tf.complex(tf.real(tape.gradient(log_psi, g)), tf.zeros(shape=g1.shape, dtype=g1.dtype.real_dtype))
+        elif mps.dtype in (tf.float64, tf.float32):            
+            g2 = tape.gradient(log_psi, g)
         del tape                     
         return  g1 + 2 * C * g2, avsigns, C
 
@@ -1114,6 +1118,7 @@ class OverlapMinimizer:
             elif mps.dtype in (tf.float64, tf.float32):
                 psi_sigma = misc_mps.ncon([tf.reshape(env,(samples.shape[0], ds[sites[0]] * ds[sites[1]], ds[sites[0]] * ds[sites[1]])),
                                            tf.linalg.expm(g - tf.conj(tf.transpose(g)))],[[-1, 1,2],[1,2]])
+                avsigns = np.average(np.sign(psi_sigma.numpy()))
                 log_psi = tf.math.reduce_mean(tf.math.log(psi_sigma), axis=0)                
                 if activation is not None:
                     C = tf.math.reduce_mean(activation(psi_sigma), axis=0)
@@ -1122,7 +1127,10 @@ class OverlapMinimizer:
             else:
                 raise TypeError('unsupported dtype {0}'.format(dtype))
         g1 = tape.gradient(C, g)
-        g2 = tf.complex(tf.real(tape.gradient(log_psi, g)), tf.zeros(shape=g1.shape, dtype=g1.dtype.real_dtype))
+        if mps.dtype in (tf.complex128, tf.complex64):                        
+            g2 = tf.complex(tf.real(tape.gradient(log_psi, g)), tf.zeros(shape=g1.shape, dtype=g1.dtype.real_dtype))
+        elif mps.dtype in (tf.float64, tf.float32):            
+            g2 = tape.gradient(log_psi, g)
         del tape
         return  g1 + 2 * C * g2, avsigns, C        
 
