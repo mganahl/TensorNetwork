@@ -1111,7 +1111,7 @@ class OverlapMinimizer:
                     C = tf.complex(tf.math.reduce_mean((1-gamma) * activation(tf.real(psi_sigma)) - gamma * np.abs(tf.imag(psi_sigma)), axis=0), tf.zeros(shape=[1], dtype=mps.dtype.real_dtype))
                 else:
                     C = tf.math.reduce_mean(psi_sigma, axis=0)
-            elif mps.dtype in (tf.nfloat64, tf.float32):
+            elif mps.dtype in (tf.float64, tf.float32):
                 psi_sigma = misc_mps.ncon([tf.reshape(env,(samples.shape[0], ds[sites[0]] * ds[sites[1]], ds[sites[0]] * ds[sites[1]])),
                                            tf.linalg.expm(g - tf.conj(tf.transpose(g)))],[[-1, 1,2],[1,2]])
                 log_psi = tf.math.reduce_mean(tf.math.log(psi_sigma), axis=0)                
