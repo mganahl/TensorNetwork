@@ -67,6 +67,29 @@ def get_generators_from_gates(gates):
     return {s : get_generator_from_gate(g) for s, g in gates.items()}
         
 
+
+def randomize_even_two_body_gates(gates, noise):
+    assert(noise>=0.0)
+    for s in range(0,len(gates),2):
+        if gates[(s,s+1)].dtype in (tf.complex128, tf.complex64):
+            gates[(s,s+1)] += tf.complex(tf.random_uniform(shape=gates[(s,s+1)].shape, dtype=gates[(s,s+1)].dtype.real_dtype, minval=-noise/2, maxval=noise/2),
+                                         tf.random_uniform(shape=gates[(s,s+1)].shape, dtype=gates[(s,s+1)].dtype.real_dtype, minval=-noise/2, maxval=noise/2))
+        elif gates[(s,s+1)].dtype in (tf.float32, tf.float64):
+            gates[(s,s+1)] += tf.random_uniform(shape=gates[(s,s+1)].shape, dtype=gates[(s,s+1)].dtype.real_dtype, minval=-noise/2, maxval=noise/2)
+
+    return gates
+
+def randomize_odd_two_body_gates(gates, noise):
+    assert(noise>=0.0)    
+    for s in range(1, len(gates)-1, 2):
+        if gates[(s,s+1)].dtype in (tf.complex128, tf.complex64):
+
+            gates[(s,s+1)] += tf.complex(tf.random_uniform(shape=gates[(s,s+1)].shape, dtype=gates[(s,s+1)].dtype.real_dtype, minval=-noise/2, maxval=noise/2),
+                                         tf.random_uniform(shape=gates[(s,s+1)].shape, dtype=gates[(s,s+1)].dtype.real_dtype, minval=-noise/2, maxval=noise/2))
+        elif gates[(s,s+1)].dtype in (tf.floay32, tf.float64):
+            gates[(s,s+1)] += tf.random_uniform(shape=gates[(s,s+1)].shape, dtype=gates[(s,s+1)].dtype.real_dtype, minval=-noise/2, maxval=noise/2)
+    return gates
+
 def initialize_even_two_body_gates(ds, dtype, which, noise=0.0):
     """
     initialize two body gates
@@ -235,10 +258,10 @@ def initialize_even_two_body_generators(ds, dtype, which='identities'):
     elif which in ('r','random'):
         for site in range(0,len(ds) - 1, 2):        
             if dtype in (tf.float32, tf.float64):                            
-                two_body_generators[(site, site+1)] = tf.random_uniform(shape=(ds[site] * ds[site+1], ds[site] * ds[site+1]), dtype=dtype)
+                two_body_generators[(site, site+1)] = tf.random_uniform(shape=(ds[site] * ds[site+1], ds[site] * ds[site+1]), dtype=dtype, minval=-0.1, maxval = 0.1)
             elif dtype in (tf.complex128, tf.complex64):
-                two_body_generators[(site, site+1)] = tf.complex(tf.random_uniform(shape=(ds[site] * ds[site+1], ds[site] * ds[site+1]), dtype=dtype.real_dtype),
-                                                                 tf.random_uniform(shape=(ds[site] * ds[site+1], ds[site] * ds[site+1]), dtype=dtype.real_dtype))
+                two_body_generators[(site, site+1)] = tf.complex(tf.random_uniform(shape=(ds[site] * ds[site+1], ds[site] * ds[site+1]), dtype=dtype.real_dtype, minval=-0.1, maxval = 0.1),
+                                                                 tf.random_uniform(shape=(ds[site] * ds[site+1], ds[site] * ds[site+1]), dtype=dtype.real_dtype, minval=-0.1, maxval = 0.1))
 
     else:
         raise ValueError('unrecognized value which = {0}'.format(which))
@@ -272,10 +295,10 @@ def initialize_odd_two_body_generators(ds, dtype, which='identities'):
     elif which in ('r','random'):
         for site in range(1, len(ds) - 2, 2):
             if dtype in (tf.float32, tf.float64):                            
-                two_body_generators[(site, site+1)] = tf.random_uniform(shape=(ds[site] * ds[site+1], ds[site] * ds[site+1]), dtype=dtype)
+                two_body_generators[(site, site+1)] = tf.random_uniform(shape=(ds[site] * ds[site+1], ds[site] * ds[site+1]), dtype=dtype, minval=-0.1, maxval = 0.1)
             elif dtype in (tf.complex128, tf.complex64):
-                two_body_generators[(site, site+1)] = tf.complex(tf.random_uniform(shape=(ds[site] * ds[site+1], ds[site] * ds[site+1]), dtype=dtype.real_dtype),
-                                                                 tf.random_uniform(shape=(ds[site] * ds[site+1], ds[site] * ds[site+1]), dtype=dtype.real_dtype))
+                two_body_generators[(site, site+1)] = tf.complex(tf.random_uniform(shape=(ds[site] * ds[site+1], ds[site] * ds[site+1]), dtype=dtype.real_dtype, minval=-0.1, maxval = 0.1),
+                                                                 tf.random_uniform(shape=(ds[site] * ds[site+1], ds[site] * ds[site+1]), dtype=dtype.real_dtype, minval=-0.1, maxval = 0.1))
     else:
         raise ValueError('unrecognized value which = {0}'.format(which))
     return two_body_generators    
@@ -305,10 +328,10 @@ def initialize_one_body_generators(ds, dtype, which='identities'):
                                    for site in range(0,len(ds))}
     elif which in ('r','random'):
         if dtype in (tf.float32, tf.float64):                        
-            one_body_generators = {site: tf.random_uniform(shape=(ds[site], ds[site]), dtype=dtype.real_dtype) for site in range(0,len(ds))}
+            one_body_generators = {site: tf.random_uniform(shape=(ds[site], ds[site]), dtype=dtype.real_dtype, minval=-0.1, maxval = 0.1) for site in range(0,len(ds))}
         elif dtype in (tf.float64,tf.complex128):            
-            one_body_generators = {site: tf.complex(tf.random_uniform(shape=(ds[site], ds[site]), dtype=dtype.real_dtype),
-                                                    tf.random_uniform(shape=(ds[site], ds[site]), dtype=dtype.real_dtype))
+            one_body_generators = {site: tf.complex(tf.random_uniform(shape=(ds[site], ds[site]), dtype=dtype.real_dtype, minval=-0.1, maxval = 0.1),
+                                                    tf.random_uniform(shape=(ds[site], ds[site]), dtype=dtype.real_dtype, minval=-0.1, maxval = 0.1))
                                    for site in range(0,len(ds))}
     else:
         raise ValueError('unrecognized value which = {0}'.format(which))            
@@ -1062,7 +1085,7 @@ class OverlapMinimizer:
             g2 = tf.complex(tf.real(tape.gradient(log_psi, g)), tf.zeros(shape=g1.shape, dtype=g1.dtype.real_dtype))
         elif mps.dtype in (tf.float64, tf.float32):            
             g2 = tape.gradient(log_psi, g)
-        del tape                     
+        del tape
         return  g1 + 2 * C * g2, avsigns, C
 
 
@@ -1661,17 +1684,18 @@ class OverlapMinimizer:
                 if verbose > 1:
                     print()
 
+
             if opt_type in ('sequentual','seq'):
                 pass
             elif opt_type in ('simultaneous','sim'):
                 Zs = []
-                for g in grads:
-                    Zs.append(np.linalg.norm(g.numpy()))
-                Z = np.max(Zs)
-                for site in range(len(self.mps) - 1):
-                    if site in sites:
-                        two_body_generators[(site, site + 1)] += (grad * alpha)  #we are trying to maximize, not minimize, hence the + operation
-                        self.two_body_gates[(site, site + 1)] = get_gate_from_generator(two_body_generators[(site, site + 1)],(ds[site], ds[site + 1], ds[site], ds[site + 1]))
+                for site in sites:                
+                    Z = np.linalg.norm(grads[site].numpy())
+                    Zs.append(Z)
+                Zmax = np.max(Zs)
+                for site in sites:
+                    two_body_generators[(site, site + 1)] += (grad * alpha/Zmax)  #we are trying to maximize, not minimize, hence the + operation
+                    self.two_body_gates[(site, site + 1)] = get_gate_from_generator(two_body_generators[(site, site + 1)],(ds[site], ds[site + 1], ds[site], ds[site + 1]))
             else:
                 raise ValueError('unknown value {} for opt_type'.format(opt_type))
 
@@ -1773,11 +1797,12 @@ class OverlapMinimizer:
                 pass
             elif opt_type in ('simultaneous','sim'):
                 Zs = []
-                for g in grads:
-                    Zs.append(np.linalg.norm(g.numpy()))
-                Z = np.max(Zs)
+                for site in sites:                
+                    Z = np.linalg.norm(grads[site].numpy())
+                    Zs.append(Z)
+                Zmax = np.max(Zs)
                 for site in sites:
-                    one_body_generators[site] += (grads[site] * alpha/Z)  #we are trying to maximize, not minimize, hence the + operation
+                    one_body_generators[site] += (grads[site] * alpha/Zmax)  #we are trying to maximize, not minimize, hence the + operation
                     self.one_body_gates[site] = get_gate_from_generator(one_body_generators[site],(ds[site], ds[site]))
             else:
                 raise ValueError('unknown value {} for opt_type'.format(opt_type))
