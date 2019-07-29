@@ -30,6 +30,39 @@ import functools as fct
 from experiments.MPS.matrixproductstates import InfiniteMPSCentralGauge, FiniteMPSCentralGauge
 
 
+def generate_probability_mps(mps):
+    ds = mps.d
+    Ds = mps.D
+    tensors=[]
+    for site in range(len(mps)):
+        copy_tensor = np.zeros((ds[site], ds[site], ds[site]), dtype=mps.dtype.as_numpy_dtype)
+        for n in range(ds[site]):
+            copy_tensor[n,n,n] = 1.0
+            tensor = misc_mps.ncon([mps.get_tensor(site), tf.conj(mps.get_tensor(site)),copy_tensor],
+                                                               [[-1, 1, -4],[-2, 2, -5],[1,2,-3]])
+            tmp=tf.reshape(tensor, (Ds[site]**2, ds[site], Ds[site+1]**2))
+        tensors.append(tmp)
+    return MPS.FiniteMPSCentralGauge(tensors)
+
+def absorb_two_body_gates(mps, two_body_gates, Dmax=None):
+    mps_out = copy.deepcopy(mps)
+    for site in range(0,len(mps_out)-1,2):
+        mps_out.apply_2site(two_body_gates[(site, site + 1)], site)
+    for site in range(1,len(mps)-2,2):
+        mps_out.apply_2site(two_body_gates[(site, site + 1)], site)
+    mps_out.position(0)
+    mps_out.position(len(mps_out), normalize=True)
+    tw = mps_out.position(0, normalize=True, D=Dmax)
+    return mps_out, tw
+ 
+def absorb_one_body_gates(mps, one_body_gates):
+    tensors = [misc_mps.ncon([mps.get_tensor(site), one_body_gates[site]],[[-1,1,-3], [-2, 1]]) 
+               for site in range(len(mps))]
+    mps_out = MPS.FiniteMPSCentralGauge(tensors)
+    #     mps_out.position(0)
+    #     mps_out.position(len(mps_out), normalize=True)
+    return mps_out   
+ 
 
 def get_gate_from_generator(g, shape):
     """
@@ -990,14 +1023,17 @@ class OverlapMinimizer:
             if mps.dtype in (tf.complex128, tf.complex64):
                 tmp = misc_mps.ncon([env, tf.linalg.expm(g - tf.conj(tf.transpose(g)))],[[1,2],[1,2]])
                 #res = (1.0 + 1j)/2 * tmp + (1.0 - 1j)/2 * tf.conj(tmp)
-                res = tf.real(tmp) - tf.abs(tf.imag(tmp))
+                #overlap = tf.real(tmp) - tf.abs(tf.imag(tmp))
+                overlap = tmp + tf.conj(tmp)
+                #the ones below shift the means of the signs around in the complex plane
+                #overlap = -tf.real(tmp) + tf.abs(tf.imag(tmp))
+                #overlap = tf.real(tmp) - tf.abs(tf.imag(tmp))                
             elif mps.dtype in (tf.float64, tf.float32):
-                res = misc_mps.ncon([env, tf.linalg.expm(g - tf.conj(tf.transpose(g)))],[[1,2],[1,2]])
+                overlap = misc_mps.ncon([env, tf.linalg.expm(g - tf.conj(tf.transpose(g)))],[[1,2],[1,2]])
             else:
                 raise TypeError('unsupported dtype {0}'.format(dtype))
                 
-                
-        return tape.gradient(res, g)
+        return tape.gradient(overlap, g), overlap
 
 
     @staticmethod
@@ -1027,7 +1063,7 @@ class OverlapMinimizer:
         return tape.gradient(res, g)
 
     @staticmethod
-    def one_body_gradient_batched(site, left_envs, right_envs, mps, samples, one_body_generators, activation=None, gamma=0.1):
+    def one_body_gradient_cost_function_batched(site, left_envs, right_envs, mps, samples, one_body_generators, activation=None, gamma=0.1):
         """
         computes the gradients for the one-body gates given `samples`. 
         `samples` represent a collection of basis states.
@@ -1069,7 +1105,8 @@ class OverlapMinimizer:
                 if activation is not None:
                     C =  tf.complex(tf.math.reduce_mean((1-gamma) * activation(tf.real(psi_sigma)) - gamma * np.abs(tf.imag(psi_sigma)), axis=0), tf.zeros(shape=[1], dtype=mps.dtype.real_dtype))
                 else:
-                    C = tf.math.reduce_mean(psi_sigma, axis=0)
+                    C =  tf.complex(tf.math.reduce_mean((1-gamma) * tf.real(psi_sigma) - gamma * np.abs(tf.imag(psi_sigma)), axis=0), tf.zeros(shape=[1], dtype=mps.dtype.real_dtype))
+                    #C =  (tf.math.reduce_sum(psi_sigma) + tf.math.reduce_sum(tf.conj(psi_sigma)))/np.sqrt(samples.shape[0])
             elif mps.dtype in (tf.float64, tf.float32):
                 psi_sigma = misc_mps.ncon([env, tf.linalg.expm(g - tf.conj(tf.transpose(g)))],[[-1, 1,2],[1,2]])
                 log_psi = tf.math.reduce_mean(tf.math.log(psi_sigma), axis=0)
@@ -1086,7 +1123,95 @@ class OverlapMinimizer:
         elif mps.dtype in (tf.float64, tf.float32):            
             g2 = tape.gradient(log_psi, g)
         del tape
-        return  g1 + 2 * C * g2, avsigns, C
+        #return  g1 + 2 * C * g2, avsigns, C
+        return  g1, avsigns, C    
+
+    
+    @staticmethod
+    def one_body_gradient_overlap_batched(site, left_envs, right_envs, mps, samples, one_body_generators):
+        """
+        computes the gradients for the one-body gates given `samples`. 
+        
+        `samples` represent a collection of basis states.
+        This function computes the gradient for minimizing the difference
+        between `mps` and the equal superposition of `samples`
+        
+        Args: 
+            site (int):         site of the one-body unitary for which to return the gradient
+            left_envs (dict mapping int -> tf.Tensor):   dictionary of left-environments
+            right_envs (dict mapping int -> tf.Tensor):   dictionary of right-environments
+            mps (FiniteMPSCentralGauge):   an mps
+            samples (tf.Tensor of shape (Nt, len(mps)):   the samples
+            one_body_generators (dict mapping integer `site` -> tf.Tensor of shape `(mps.d[site],mps.d[site])`):  the generators `g` of the one-body unitaries
+                                                                                                                  U = expm(`g`-herm(`g`))
+        Returns:
+            tuple containing (gradient, avsigns, C)
+            gradient (tf.Tensor):  the gradient of `one_body_generator[site]'
+            avsigns( tf.Tensor):   the average current sign
+            C (tf.Tensor (scalar)):the value of the cost function
+        """
+        env = OverlapMinimizer.get_one_body_env_batched(site,left_envs,right_envs, mps, samples)
+        ds = mps.d
+        with tf.GradientTape(persistent=True) as tape:
+            g = one_body_generators[site]
+            tape.watch(g)
+            if mps.dtype in (tf.complex128, tf.complex64):                        
+                psi_sigma = misc_mps.ncon([env, tf.linalg.expm(g - tf.conj(tf.transpose(g)))],[[-1, 1,2],[1,2]])
+                avsigns = np.average(np.sign(np.real(psi_sigma.numpy()))) + 1j * np.average(np.sign(np.imag(psi_sigma.numpy())))
+                log_psi = tf.math.reduce_mean(tf.math.log(psi_sigma), axis=0)
+                C = tf.math.reduce_mean(psi_sigma, axis=0) + tf.math.reduce_mean(tf.conj(psi_sigma), axis=0)
+            elif mps.dtype in (tf.float64, tf.float32):
+                psi_sigma = misc_mps.ncon([env, tf.linalg.expm(g - tf.conj(tf.transpose(g)))],[[-1, 1,2],[1,2]])
+                log_psi = tf.math.reduce_mean(tf.math.log(psi_sigma), axis=0)
+                avsigns = np.average(np.sign(psi_sigma.numpy()))
+                C = tf.math.reduce_mean(psi_sigma, axis=0)
+            else:
+                raise TypeError('unsupported dtype {0}'.format(dtype))
+
+        return tape.gradient(C, g), avsigns, C
+
+    @staticmethod
+    def test_one_body_gradient_overlap_batched(site, left_envs, right_envs, mps, samples, one_body_generators):
+        """
+        computes the gradients for the one-body gates given `samples`. 
+        
+        `samples` represent a collection of basis states.
+        This function computes the gradient for minimizing the difference
+        between `mps` and the equal superposition of `samples`
+        
+        Args: 
+            site (int):         site of the one-body unitary for which to return the gradient
+            left_envs (dict mapping int -> tf.Tensor):   dictionary of left-environments
+            right_envs (dict mapping int -> tf.Tensor):   dictionary of right-environments
+            mps (FiniteMPSCentralGauge):   an mps
+            samples (tf.Tensor of shape (Nt, len(mps)):   the samples
+            one_body_generators (dict mapping integer `site` -> tf.Tensor of shape `(mps.d[site],mps.d[site])`):  the generators `g` of the one-body unitaries
+                                                                                                                  U = expm(`g`-herm(`g`))
+        Returns:
+            tuple containing (gradient, avsigns, C)
+            gradient (tf.Tensor):  the gradient of `one_body_generator[site]'
+            avsigns( tf.Tensor):   the average current sign
+            C (tf.Tensor (scalar)):the value of the cost function
+        """
+        env = OverlapMinimizer.get_one_body_env_batched(site,left_envs,right_envs, mps, samples)
+        ds = mps.d
+        with tf.GradientTape(persistent=True) as tape:
+            g = one_body_generators[site]
+            tape.watch(g)
+            if mps.dtype in (tf.complex128, tf.complex64):                        
+                psi_sigma = misc_mps.ncon([env, tf.linalg.expm(g - tf.conj(tf.transpose(g)))],[[-1, 1,2],[1,2]])
+                avsigns = np.average(np.sign(np.real(psi_sigma.numpy()))) + 1j * np.average(np.sign(np.imag(psi_sigma.numpy())))
+                C1 = (tf.math.reduce_sum(psi_sigma, axis=0) + tf.math.reduce_sum(tf.conj(psi_sigma), axis=0))/np.sqrt(samples.shape[0])
+                C2 = tf.math.reduce_sum(psi_sigma*tf.conj(psi_sigma), axis=0) #the norm
+            elif mps.dtype in (tf.float64, tf.float32):
+                psi_sigma = misc_mps.ncon([env, tf.linalg.expm(g - tf.conj(tf.transpose(g)))],[[-1, 1,2],[1,2]])
+                avsigns = np.average(np.sign(psi_sigma.numpy()))
+                C1 = tf.math.reduce_sum(psi_sigma, axis=0)/np.sqrt(samples.shape[0])
+                C2 = tf.math.reduce_sum(tf.pow(psi_sigma, 2), axis=0) #the norm
+            else:
+                raise TypeError('unsupported dtype {0}'.format(dtype))
+
+        return tape.gradient(C1, g), avsigns, C1, C2
 
 
     @staticmethod
@@ -1398,6 +1523,7 @@ class OverlapMinimizer:
             
         #fixme: do right sweeps as well
         ds = self.mps.d
+        conv_1, conv_2 = None, None
         for it in range(num_sweeps):
             if samples != None:
                 [self.add_unitary_batched_right(site, self.right_envs_batched, self.mps, samples, self.one_body_gates, self.two_body_gates) for site in reversed(range(1,len(self.mps)))]
@@ -1419,9 +1545,20 @@ class OverlapMinimizer:
                         self.add_unitary_left(site, self.left_envs, self.mps, ref_mps, self.one_body_gates, self.two_body_gates)
                 if (verbose > 0) and (site not in (0, len(self.mps) -1)):
                     if samples != None:
+
+
                         overlap_1 = self.overlap_batched(site, self.left_envs_batched, self.right_envs_batched, self.one_body_gates, self.mps, samples)
+                        if site == 1:                        
+                      n      conv_1 = overlap_1
+                        elif site == len(self.mps) - 2:                        
+                            conv_1 -= overlap_1            
+                            
                     if ref_mps != None:
                         overlap_2 = self.overlap(site, self.left_envs, self.right_envs, self.one_body_gates, self.mps, ref_mps)
+                        if site == 1:                        
+                            conv_2 = overlap_2
+                        elif site == len(self.mps) - 2:                        
+                            conv_2 -= overlap_2            
                     if (ref_mps != None) and (samples !=None): 
                         stdout.write(
                             "\r iteration  %i/%i at site %i , overlap_samples = %.6f + %.6f i, overlap_ref_mps %.6f + %.6f i" %
@@ -1438,7 +1575,7 @@ class OverlapMinimizer:
                     stdout.flush()
                 if verbose > 1:
                     print()
-
+        return conv_1, conv_2
 
     def minimize_two_body(self, samples=None, ref_mps=None, num_sweeps=10, sites=None, alpha_gates=0.0, alpha_samples=1.0, alpha_ref_mps = 1.0, verbose=0):
         """
@@ -1700,27 +1837,185 @@ class OverlapMinimizer:
                 raise ValueError('unknown value {} for opt_type'.format(opt_type))
 
 
-    def gradient_minimization_one_body(self, one_body_generators, two_body_generators=None, opt_type='sequential',
-                                       samples=None, ref_mps=None, alpha=1E-5, num_sweeps=10,  sites=None, activation=None, gamma=0.1, verbose=0):
+    def gradient_minimization_overlap_one_body(self, one_body_generators, ref_mps, two_body_generators=None, opt_type='sequential',
+                                               alpha=1E-5, num_sweeps=10,
+                                               sites=None, verbose=0):
         """
-        minimize the overlap by optimizing over the even two-body unitaries.
-        minimization runs from left to right and changes even gates one at at time.
-        One can either optimize the overlap with `samples`, where `samples` is a (n_samples, N) tensor
-        of samples, for example obtained from FiniteMPSCentralGauge.generate_samples(...). 
-        In this case the method optimizes the overlap with 1/sqrt(n_samples)\sum_n |`samples[n,:]`>.
-        If `ref_mps` is given (a FiniteMPSCentralGauge), the routine optimizes the overlap with |`ref_mps`>.
-        If `samples` and `ref_mps` are given the method optnimizes the overlap with 
-        1/sqrt(n_samples)\sum_n |`samples[n,:]`> + |`ref_mps`>
+        minimize the distance to `ref_mps` by optimizing over the one-body unitaries.
+        This implements a gradient optimization on one-body unitaries by updating the generators of the unitaries.
+        minimization runs from left to right and changes generator either one at at time or simultaneously, depending
+        on the value of `opt_type`.
         Args:
-            samples (tf.Tensor of shape (n_samples, N):    basis-state samples
+            one_body_generators (list of tf.Tensor of shape (d,d)): the generators `g` for the one-body unitaries
+                                                                            note that U = expm(`g` - herm(`g`))
+                                                                            if not `None`, self.one_body_gates are initialized from generators
+                                                                            else, the current values in self.one_body_gates are used
             ref_mps (FiniteMPSCentralGauge):               a reference mps 
+            two_body_generators (None or list of tf.Tensor of shape (d**2,d**2)): the generators `g` for the two-body unitaries
+                                                                          note that U = expm(`g` - herm(`g`))
+
+            opt_type (str):  the type of optimization. `opt_type` == 'sequential' optimizes the generators one at a time
+                                                       `opt_type` == 'simultaneous' optimizes the generators simultaneously
+
+            alpha (float): stepsize
             num_sweeps (int): number of optimiztion sweeps
             sites (iterable): the sites that should be optimized, e.g. `sites=range(0,N-1,2)` optimizes all even sites
-            alpha_gates (float): see below
-            alpha_samples (float): see below
-            alpha_ref_mos (float): the three `alpha_` arguments determine the mixing of the update
-                                   the new gate is given by `alpha_gate` * old_gate + `alpha_samples` * sample_update + `alpha_ref_mps` * ref_mps_udate
             verbose (int):         verbosity flag; larger means more output
+        """
+        self.left_envs_batched = {}
+        self.right_envs_batched = {}
+        self.left_envs = {}
+        self.right_envs = {}
+        if sites is None:
+            sites = range(len(self.mps))
+            
+        #fixme: do right sweeps as well
+        ds = self.mps.d
+        if two_body_generators is not None:
+            self.two_body_gates = initialize_gates_from_generators(two_body_generators, ds)
+            
+        self.one_body_gates = initialize_gates_from_generators(one_body_generators, ds)
+        max_site = np.max(sites)
+        for it in range(num_sweeps):
+            [self.add_unitary_right(site, self.right_envs, self.mps, ref_mps, self.one_body_gates, self.two_body_gates) for site in reversed(range(1,len(self.mps)))]
+
+            grads = []                
+            for site in range(len(self.mps)):
+                if site > max_site: #stop if we reached the largest of the sites we want to optimize
+                    break
+                
+                if site in sites:
+                    grad, overlap = self.one_body_gradient(site,self.left_envs, self.right_envs, self.mps, ref_mps, one_body_generators)
+                    if opt_type in ('sequential','s','seq'):
+                        grad /= tf.linalg.norm(grad)
+                        one_body_generators[site] += (grad * alpha)  #we are trying to maximize, not minimize, hence the + operation
+                        self.one_body_gates[site] = get_gate_from_generator(one_body_generators[site],(ds[site], ds[site]))
+                    elif opt_type in ('simultaneous','sim'):
+                        grads.append(grad)
+                    else:
+                        raise ValueError('unknown value {} for opt_type'.format(opt_type))
+                    
+                if site < (len(self.mps) - 1):                    
+                    self.add_unitary_left(site, self.left_envs, self.mps, ref_mps, self.one_body_gates, self.two_body_gates)
+                if (verbose > 0) and (site not in (0, len(self.mps) -1)):
+                    stdout.write(
+                        "\r iteration  %i/%i at site %i , overlap = %.6f + %.6f i" %
+                        (it, num_sweeps, site, np.real(overlap), np.imag(overlap)))
+                    stdout.flush()
+                if verbose > 1:
+                    print()
+
+            if opt_type in ('sequential','seq'):
+                pass
+            elif opt_type in ('simultaneous','sim'):
+                Zs = []
+                for site in sites:                
+                    Z = np.linalg.norm(grads[site].numpy())
+                    Zs.append(Z)
+                Zmax = np.max(Zs)
+                for site in sites:
+                    one_body_generators[site] += (grads[site] * alpha/Zmax)  #we are trying to maximize, not minimize, hence the + operation
+                    self.one_body_gates[site] = get_gate_from_generator(one_body_generators[site],(ds[site], ds[site]))
+            else:
+                raise ValueError('unknown value {} for opt_type'.format(opt_type))
+
+    def gradient_minimization_cost_function_one_body_batched(self, one_body_generators, samples, two_body_generators=None,opt_type='sequential',
+                                                             alpha=1E-5, num_sweeps=10,
+                                                             sites=None, activation=None, gamma=0.1, verbose=0):
+
+        
+        """
+        positivizes self.mps by optimizing the one-body unitaries.
+        This implements a gradient optimization on one-body unitaries by updating the generators of the unitaries.
+        Optimization runs from left to right and changes generators either one at at time or simultaneously, depending
+        on the value of `opt_type`. The cost function that is minimized is given by (see https://arxiv.org/abs/1906.04654)
+
+                  Cost = \sum_{\sigma} \partial C_{\sigma} + 2 * C_{\sigma} * \Re \partial(\log(\psi_{\sigma}))
+        with 
+                  C_{\sigma} = ((1-\gamma) `activation`(\Re(\psi_{\sigma}))) - \gamma * |\Im(\psi_{\sigma})|
+
+        Args:
+            one_body_generators (dict mapping integer `site` -> tf.Tensor of shape `(mps.d[site],mps.d[site])`):  the generators `g` of the one-body unitaries
+                                                                                                                  U = expm(`g`-herm(`g`))
+            samples (tf.Tensor of shape (Nt, len(mps)):   the samples
+            two_body_generators (None or dict mapping tuple (site, site+1) -> tf.Tensor 
+                                 of shape `(mps.d[sites[0]] * mps.d[sites[1]], mps.d[sites[0]] * mps.d[sites[1]])`):  the generators `g` of the two-body unitaries
+                                                                                                                      U = expm(`g`-herm(`g`))
+                                                                                                                      if given, two-body gates are initialized from generators
+            opt_type (str):  the type of optimization. `opt_type` == 'sequential' optimizes the generators one at a time
+                                                       `opt_type` == 'simultaneous' optimizes the generators simultaneously
+            alpha (float): step size
+            num_sweeps (int): number of optimiztion sweeps
+            sites (iterable): the sites that should be optimized, e.g. `sites=range(0,N-1,2)` optimizes all even sites
+            activation (callable):  activation function, see above
+            gamma (float):          see above
+            verbose (int):         verbosity flag; larger means more output
+        """
+        self.left_envs_batched = {}
+        self.right_envs_batched = {}
+        self.left_envs = {}
+        self.right_envs = {}
+        if sites is None:
+            sites = range(len(self.mps))
+            
+        #fixme: do right sweeps as well
+        ds = self.mps.d
+        if two_body_generators is not None:
+            self.two_body_gates = initialize_gates_from_generators(two_body_generators, ds)
+            
+        self.one_body_gates = initialize_gates_from_generators(one_body_generators, ds)
+        max_site = np.max(sites)
+        for it in range(num_sweeps):
+            [self.add_unitary_batched_right(site, self.right_envs_batched, self.mps, samples, self.one_body_gates, self.two_body_gates) for site in reversed(range(1,len(self.mps)))]
+
+            grads = []                
+            for site in range(len(self.mps)):
+                if site > max_site: #stop if we reached the largest of the sites we want to optimize
+                    break
+                
+                if site in sites:
+                    grad, avsign, c1 = self.one_body_gradient_cost_function_batched(site,self.left_envs_batched,
+                                                                                        self.right_envs_batched, self.mps, samples,
+                                                                                        one_body_generators, activation, gamma=gamma)
+                    if opt_type in ('sequential','s','seq'):
+                        grad /= tf.linalg.norm(grad)
+                        one_body_generators[site] += (grad * alpha)  #we are trying to maximize, not minimize, hence the + operation
+                        self.one_body_gates[site] = get_gate_from_generator(one_body_generators[site],(ds[site], ds[site]))
+                    else:
+                        grads.append(grad)
+                    
+                if site < (len(self.mps) - 1):                    
+                    self.add_unitary_batched_left(site, self.left_envs_batched, self.mps, samples, self.one_body_gates, self.two_body_gates)
+                if (verbose > 0) and (site not in (0, len(self.mps) -1)):
+                    stdout.write(
+                        "\r iteration  %i/%i at site %i , C = %.6f + %.6f i, <sgn> = %.6f + %.6f i" %
+                        (it, num_sweeps, site, np.real(c1),np.imag(c1),np.real(avsign),np.imag(avsign)))
+                    stdout.flush()
+                if verbose > 1:
+                    print()
+
+            if opt_type in ('sequential','seq'):
+                pass
+            elif opt_type in ('simultaneous','sim'):
+                Zs = []
+                for site in sites:                
+                    Z = np.linalg.norm(grads[site].numpy())
+                    Zs.append(Z)
+                Zmax = np.max(Zs)
+                for site in sites:
+                    one_body_generators[site] += (grads[site] * alpha/Zmax)  #we are trying to maximize, not minimize, hence the + operation
+                    self.one_body_gates[site] = get_gate_from_generator(one_body_generators[site],(ds[site], ds[site]))
+            else:
+                raise ValueError('unknown value {} for opt_type'.format(opt_type))
+
+            
+    def gradient_minimization_cost_function_overlap_one_body_batched(self, one_body_generators, two_body_generators=None, opt_type='sequential',
+                                                                     samples=None, ref_mps=None, alpha=1E-5, num_sweeps=10,
+                                                                     sites=None, activation=None, gamma=0.1, verbose=0):
+        """
+        This is experimental
+        combines  `gradient_minimization_overlap_one_body` and `gradient_minimization_cost_function_one_body_batched`
+        into a single function and combines the gradients of the two into a single one. 
         """
         self.left_envs_batched = {}
         self.right_envs_batched = {}
@@ -1750,12 +2045,13 @@ class OverlapMinimizer:
                 if site in sites:
                     grad = tf.zeros(shape=[ds[site], ds[site]], dtype=self.mps.dtype)
                     if samples != None:
-                        gradient, avsign, c1 = self.one_body_gradient_batched(site,self.left_envs_batched,
-                                                                              self.right_envs_batched, self.mps, samples,
-                                                                              one_body_generators, activation, gamma=gamma)
+                        gradient, avsign, c1 = self.one_body_gradient_cost_function_batched(site,self.left_envs_batched,
+                                                                                            self.right_envs_batched, self.mps, samples,
+                                                                                            one_body_generators, activation, gamma=gamma)
                         grad += gradient
                     if ref_mps !=None:
-                        grad += self.one_body_gradient(site,self.left_envs, self.right_envs, self.mps, ref_mps, one_body_generators)
+                        gradient, cost = self.one_body_gradient(site,self.left_envs, self.right_envs, self.mps, ref_mps, one_body_generators)
+                        grad += gradient
                     if opt_type in ('sequential','s','seq'):
                         grad /= tf.linalg.norm(grad)
                         one_body_generators[site] += (grad * alpha)  #we are trying to maximize, not minimize, hence the + operation
@@ -1806,7 +2102,7 @@ class OverlapMinimizer:
                     self.one_body_gates[site] = get_gate_from_generator(one_body_generators[site],(ds[site], ds[site]))
             else:
                 raise ValueError('unknown value {} for opt_type'.format(opt_type))
-                
+            
                     
 
 
