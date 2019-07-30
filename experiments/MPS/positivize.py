@@ -124,6 +124,11 @@ def read_and_convert_to_tf(prefix,  dtype=tf.float64):
 def analyze_positivity(mps, samples=None, nsamples=1000, show=True, fignum=0, bins=100, verbose=0):
     """
     analyze the MPS wavefunction by  sampling `nsamples` and measuring the average sign
+
+    Returns:
+        for float dtype: av_sign, av_amp
+
+        for complex dtype: av_real_sign, av_abs_imag_amp
     """
     if mps.dtype in (tf.float64, tf.float32):
         if samples is None:
@@ -143,14 +148,16 @@ def analyze_positivity(mps, samples=None, nsamples=1000, show=True, fignum=0, bi
             plt.show()
             plt.pause(0.01)        
         av_sign = np.mean(signs)
+        av_amp = np.mean(np.exp(log_amps * signs))
         print()
         print('#############################')
         print('   all samples >= 0: ',np.all(signs>=0))
         print('   all samples <= 0: ', np.all(signs<=0))
         print('   <sgn> = {0}'.format(av_sign))
+        print('   <amp> = {0}'.format(av_amp))                        
         print('#############################')
         print()
-        return av_sign
+        return av_sign, av_amp
 
     if mps.dtype in (tf.complex128, tf.complex64):
         if samples is None:
@@ -171,32 +178,46 @@ def analyze_positivity(mps, samples=None, nsamples=1000, show=True, fignum=0, bi
             
             plt.figure(fignum)
             plt.clf()            
-            plt.subplot(2,1,1)
+            ax = plt.subplot(2,1,1)
             plt.title(r'log-amplitudes; min ($\log$(amps))={0}, max($\log$(amp))={1}'.format(np.round(np.min(log_amps), 2),np.round(np.max(log_amps), 2)))
             #plt.hist(np.imag(phases * log_amps), bins=bins)                        
-            plt.hist(-np.sign(np.real(phases))* np.real(log_amps), bins=bins)
-            plt.xlabel(r'-Sign($\Re$(amp)) $\log (\vert$amp$\vert)$')
+            #plt.hist(-np.sign(np.real(phases)) * np.real(log_amps*phases), bins=bins)
+            plt.hist(np.real(np.exp(log_amps)*phases), bins=bins)
+            plt.xlabel(r'$\Re(amp)$')                        
+            #plt.xlabel(r'-Sign($\Re$(amp)) $\log (\vert$amp$\vert)$')
             plt.ylabel('frequency')
-            plt.subplot(2,1,2)
-            plt.hist(-np.sign(np.imag(phases)) * np.real(log_amps), bins=bins)
+            #plt.xlim([min(np.real(np.exp(log_amps)*phases)),max(np.real(np.exp(log_amps)*phases))])            
+            #ax.set_xscale('log')
+            ax = plt.subplot(2,1,2)
+            #plt.hist(-np.sign(np.imag(phases)) * np.imag(log_amps*phases), bins=bins)
+            plt.hist(np.imag(np.exp(log_amps)*phases), bins=bins)
+            plt.xlabel(r'$\Im(amp)$')            
             #plt.hist(np.imag(phases * log_amps), bins=bins)            
-            plt.xlabel(r'-Sign($\Im$(amp)) $\log (\vert$amp$\vert)$')            
+            #plt.xlabel(r'-Sign($\Im$(amp)) $\log (\vert$amp$\vert)$')            
             plt.ylabel('frequency')
+            #ax.set_xscale('log')            
             plt.tight_layout()
+            #plt.xlim([min(np.imag(np.exp(log_amps)*phases)),max(np.imag(np.exp(log_amps)*phases))])
             plt.draw()
             plt.show()
             plt.pause(0.01)        
-            
-        av_sign = np.mean(np.sign(np.real(phases))) + 1j * np.mean(np.sign(np.imag(phases)))
+        av_real_sign = np.mean(np.sign(np.real(np.exp(log_amps)*phases)))
+        av_real = np.mean(np.real(np.exp(log_amps)*phases))
+        av_imag = np.mean(np.imag(np.exp(log_amps)*phases))
+        av_abs_imag = np.mean(np.abs(np.imag(np.exp(log_amps)*phases)))
+        #av_sign = np.mean(np.sign(np.real(phases))) + 1j * np.mean(np.sign(np.imag(phases)))
         print()
         print()
         print('#############################')
         print('   all samples >= 0: N/A')
         print('   all samples <= 0: N/A')
-        print('   <sgn> = {0}'.format(av_sign))
+        print('   <Sgn(Re(amp))> = {0}'.format(av_real_sign))
+        print('   <Re(amp)> = {0}'.format(av_real))                
+        print('   <Im(amp)> = {0}'.format(av_imag))
+        print('   <|Im(amp)|> = {0}'.format(av_abs_imag))                
         print('#############################')
         print()
-        return av_sign
+        return av_real_sign, av_abs_imag
 
     
 def equal_superposition(ds,dtype=np.float64):
