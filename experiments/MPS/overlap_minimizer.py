@@ -957,7 +957,7 @@ class OverlapMinimizer:
 
             
     @staticmethod            
-    def get_two_body_env(sites, left_envs, right_envs, one_body_gates, mps, conj_mps):
+    def get_two_body_env(sites, left_envs, right_envs, one_body_gates, mps, conj_mps, normalize=True):
         """
         compute the environment of the two-body unitary at sites `sites`
         of the network <conj_mps|U|mps>
@@ -967,46 +967,57 @@ class OverlapMinimizer:
         tensor_right = misc_mps.ncon([mps.get_tensor(sites[1]), one_body_gates[sites[1]]], [[-1,1,-3],[-2, 1]])
         
         if (sites[0] > 0) and (sites[1] < len(mps) - 1) and (sites[0] % 2 == 0):
-            return misc_mps.ncon([left_envs[sites[0]], tensor_left, tensor_right, right_envs[sites[1]], 
+            env = misc_mps.ncon([left_envs[sites[0]], tensor_left, tensor_right, right_envs[sites[1]], 
                                   tf.conj(conj_mps.get_tensor(sites[0])), tf.conj(conj_mps.get_tensor(sites[1]))],
                                  [[7,1,-1,2], [7,-3,6], [6,-4,8], [8,4,-2,3], [1,2,5], [5,3,4]])
         elif (sites[0] > 0) and (sites[1] < len(mps) - 1) and (sites[0] % 2 == 1):
-            return misc_mps.ncon([left_envs[sites[0]], tensor_left, 
+            env =  misc_mps.ncon([left_envs[sites[0]], tensor_left, 
                                   tensor_right, right_envs[sites[1]], 
                                   tf.conj(conj_mps.get_tensor(sites[0])), tf.conj(conj_mps.get_tensor(sites[1]))],
                                  [[1, 7, 2, -3], [1, 2, 3], [3, 4, 5], [5, 8, 4, -4], [7, -1, 6], [6, -2, 8]])    
         elif sites[0] == 0:
-            return misc_mps.ncon([tensor_left, tensor_right, right_envs[sites[1]], 
+            env =  misc_mps.ncon([tensor_left, tensor_right, right_envs[sites[1]], 
                                   tf.conj(conj_mps.get_tensor(sites[0])), tf.conj(conj_mps.get_tensor(sites[1]))],
                                  [[1, -3, 2], [2, -4, 3], [3, 4, -2, 5], [1, -1, 6], [6, 5, 4]])  
         elif sites[1] == (len(mps) - 1):
-            return misc_mps.ncon([left_envs[sites[0]], tensor_left,tensor_right,
+            env =  misc_mps.ncon([left_envs[sites[0]], tensor_left,tensor_right,
                                   tf.conj(conj_mps.get_tensor(sites[0])), tf.conj(conj_mps.get_tensor(sites[1]))],
                                  [[5,4, -1,3], [5, -3, 1], [1,-4, 6], [4,3,2], [2,-2,6]])
+        if normalize:
+            Z = tf.linalg.norm(env)
+        return env/Z
 
 
     @staticmethod        
-    def get_one_body_env(site, left_envs, right_envs, mps, conj_mps):
+    def get_one_body_env(site, left_envs, right_envs, mps, conj_mps, ref_sym=False, normalize=True):
         """
         compute the environment of the one-body unitary at site `site`
         of the network <conj_mps|U|mps>
         """
         
         if (site not in (0,len(mps) - 1)) and (site%2 == 1):
-            return misc_mps.ncon([left_envs[site], mps.get_tensor(site), tf.conj(conj_mps.get_tensor(site)),
-                                  right_envs[site]],
-                                 [[1,5,-1,4], [1,-2,3], [5,6,7], [3,7,4,6]])
+            env = misc_mps.ncon([left_envs[site], mps.get_tensor(site), tf.conj(conj_mps.get_tensor(site)),
+                                 right_envs[site]],
+                                [[1,5,-1,4], [1,-2,3], [5,6,7], [3,7,4,6]])
+        
         elif (site not in (0,len(mps) - 1)) and (site%2 == 0):
-            return misc_mps.ncon([left_envs[site], mps.get_tensor(site), tf.conj(conj_mps.get_tensor(site)),
-                                  right_envs[site]],
-                                 [[1,5,4,6], [1,-2,3], [5,6,7], [3,7,-1,4]])
+            env = misc_mps.ncon([left_envs[site], mps.get_tensor(site), tf.conj(conj_mps.get_tensor(site)),
+                                 right_envs[site]],
+                                [[1,5,4,6], [1,-2,3], [5,6,7], [3,7,-1,4]])
         elif site == 0:
-            return misc_mps.ncon([mps.get_tensor(site), tf.conj(conj_mps.get_tensor(site)), right_envs[site]],
+            env =  misc_mps.ncon([mps.get_tensor(site), tf.conj(conj_mps.get_tensor(site)), right_envs[site]],
                                  [[1, -2, 2], [1, 3, 4], [2, 4, -1, 3]])
         elif site  == (len(mps) - 1):
-            return misc_mps.ncon([left_envs[site], mps.get_tensor(site), tf.conj(conj_mps.get_tensor(site))],
-                                 [[1, 3, -1, 4], [1, -2, 2], [3, 4, 2]])
+            env = misc_mps.ncon([left_envs[site], mps.get_tensor(site), tf.conj(conj_mps.get_tensor(site))],
+                                [[1, 3, -1, 4], [1, -2, 2], [3, 4, 2]])
 
+        if normalize:
+            Z = tf.linalg.norm(env)
+
+        if ref_sym:
+            return env + tf.transpose(tf.conj(env))
+        else:
+            return env
 
 
     @staticmethod
@@ -1506,6 +1517,8 @@ class OverlapMinimizer:
             alpha_ref_mos (float): the three `alpha_` arguments determine the mixing of the update
                                    the new gate is given by `alpha_gate` * old_gate + `alpha_samples` * sample_update + `alpha_ref_mps` * ref_mps_udate
             verbose (int):         verbosity flag; larger means more output
+        Returns:
+            c1, c2:   convergence of overlap with ref_mps and/or samples
         """
         assert(alpha_samples <= 1.0)
         assert(alpha_samples >= 0)
@@ -1523,7 +1536,7 @@ class OverlapMinimizer:
             
         #fixme: do right sweeps as well
         ds = self.mps.d
-        conv_1, conv_2 = None, None
+        conv_1, conv_2 = 0,0
         for it in range(num_sweeps):
             if samples != None:
                 [self.add_unitary_batched_right(site, self.right_envs_batched, self.mps, samples, self.one_body_gates, self.two_body_gates) for site in reversed(range(1,len(self.mps)))]
@@ -1545,11 +1558,9 @@ class OverlapMinimizer:
                         self.add_unitary_left(site, self.left_envs, self.mps, ref_mps, self.one_body_gates, self.two_body_gates)
                 if (verbose > 0) and (site not in (0, len(self.mps) -1)):
                     if samples != None:
-
-
                         overlap_1 = self.overlap_batched(site, self.left_envs_batched, self.right_envs_batched, self.one_body_gates, self.mps, samples)
                         if site == 1:                        
-                      n      conv_1 = overlap_1
+                            conv_1 = overlap_1
                         elif site == len(self.mps) - 2:                        
                             conv_1 -= overlap_1            
                             
@@ -1575,7 +1586,15 @@ class OverlapMinimizer:
                     stdout.flush()
                 if verbose > 1:
                     print()
-        return conv_1, conv_2
+
+        if (ref_mps != None) and (samples != None):
+            return np.abs(conv_1), np.abs(conv_2)
+        elif (ref_mps == None) and (samples == None):
+            return np.abs(conv_1), None
+        elif (ref_mps != None) and (samples == None):
+            return np.abs(conv_2), None
+        elif (ref_mps == None) and (samples == None):
+            return None, None
 
     def minimize_two_body(self, samples=None, ref_mps=None, num_sweeps=10, sites=None, alpha_gates=0.0, alpha_samples=1.0, alpha_ref_mps = 1.0, verbose=0):
         """
