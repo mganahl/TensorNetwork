@@ -10,15 +10,14 @@ import experiments.MPS.DMRG as DMRG
 import experiments.MERA.misc_mera as misc_mera
 import experiments.MPS_classifier.MPSMNIST as mm
 import experiments.MPS.overlap_minimizer as OM
+import sign_mps_data.readMPS as readMPS
 from scipy.linalg import expm
 import numpy as  np
 import copy
 import os
 import itertools
 import matplotlib
-#matplotlib.use('TkAgg')
 from matplotlib import pyplot as plt
-import sign_mps_data.readMPS as readMPS
 plt.rc('text', usetex=True)
 plt.rc('font', family='serif')
 misc_mps.compile_ncon(True)
@@ -57,8 +56,18 @@ def read_and_convert_to_tf(prefix,  dtype=tf.float64):
     Returns:
         list of tf.Tensor objects
     """
-    tensors = read_and_convert_to_pyten(prefix,dtype)
-    return [tf.transpose(tf.convert_to_tensor(tensors[n]),(0,2,1)) for n in range(len(tensors))] #the index order of the PyTeN and TensorNetwork MPS is different
+    #Fixme:  get rid of all the unneccessary transposes
+    tensors = readMPS.readMPS(prefix + '_tensors.txt',prefix + '_index.txt',N=8,convert=True)
+    tensors_new=[]
+    for n in range(len(tensors)):
+        if n ==0:
+            tensors_new.append(np.transpose(np.expand_dims(tensors[n],0),(0,2,1)).astype(dtype.as_numpy_dtype))
+        elif n > 0 and n < len(tensors) - 1:
+            tensors_new.append(np.transpose(tensors[n], (0,2,1)).astype(dtype.as_numpy_dtype))
+        elif n == len(tensors) -1 :
+            tensors_new.append(np.transpose(np.expand_dims(tensors[n],2), (1,2,0)).astype(dtype.as_numpy_dtype))
+            
+    return [tf.transpose(tf.convert_to_tensor(tensors[n]),(0,2,1)) for n in range(len(tensors_new))] #the index order of the PyTeN and TensorNetwork MPS is different
 
 
 #%matplotlib qt
