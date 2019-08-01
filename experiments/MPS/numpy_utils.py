@@ -2,7 +2,7 @@ import numpy as  np
 import sign_mps_data.readMPS as readMPS
 from lib.mpslib.Tensor import Tensor
 import lib.mpslib.TensorNetwork as TN
-
+import sign_mps_data.readMPS as readMPS
 
 
 def generate_basis(N):
@@ -72,9 +72,9 @@ def read_and_convert_to_pyten(prefix,dtype=np.float64):
     tensors_new=[]
     for n in range(len(tensors)):
         if n ==0:
-            tensors_new.append(np.transpose(np.expand_dims(tensors[n],0),(0,2,1)).astype(dtype.as_numpy_dtype))
+            tensors_new.append(np.transpose(np.expand_dims(tensors[n],0),(0,2,1)).astype(dtype))
         elif n > 0 and n < len(tensors) - 1:
-            tensors_new.append(np.transpose(tensors[n], (0,2,1)).astype(dtype.as_numpy_dtype))
+            tensors_new.append(np.transpose(tensors[n], (0,2,1)).astype(dtype))
         elif n == len(tensors) -1 :
-            tensors_new.append(np.transpose(np.expand_dims(tensors[n],2), (1,2,0)).astype(dtype.as_numpy_dtype))
+            tensors_new.append(np.transpose(np.expand_dims(tensors[n],2), (1,2,0)).astype(dtype))
     return [t.view(Tensor) for t in tensors_new]
