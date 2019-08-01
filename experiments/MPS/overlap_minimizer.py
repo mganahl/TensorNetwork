@@ -25,7 +25,6 @@ import experiments.MPS_classifier.batchtensornetwork as btn
 import experiments.MPS.misc_mps as misc_mps
 from sys import stdout
 import experiments.MPS.matrixproductstates as MPS
-import experiments.MPS.matrixproductstates as positivize
 import functools as fct
 from experiments.MPS.matrixproductstates import InfiniteMPSCentralGauge, FiniteMPSCentralGauge
 
@@ -119,8 +118,18 @@ def randomize_odd_two_body_gates(gates, noise):
 
             gates[(s,s+1)] += tf.complex(tf.random_uniform(shape=gates[(s,s+1)].shape, dtype=gates[(s,s+1)].dtype.real_dtype, minval=-noise/2, maxval=noise/2),
                                          tf.random_uniform(shape=gates[(s,s+1)].shape, dtype=gates[(s,s+1)].dtype.real_dtype, minval=-noise/2, maxval=noise/2))
-        elif gates[(s,s+1)].dtype in (tf.floay32, tf.float64):
+        elif gates[(s,s+1)].dtype in (tf.float32, tf.float64):
             gates[(s,s+1)] += tf.random_uniform(shape=gates[(s,s+1)].shape, dtype=gates[(s,s+1)].dtype.real_dtype, minval=-noise/2, maxval=noise/2)
+    return gates
+
+def randomize_gates(gates, noise):
+    assert(noise>=0.0)    
+    for k in gates.keys():
+        if gates[k].dtype in (tf.complex128, tf.complex64):
+            gates[k] += tf.complex(tf.random_uniform(shape=gates[k].shape, dtype=gates[k].dtype.real_dtype, minval=-noise/2, maxval=noise/2),
+                                         tf.random_uniform(shape=gates[k].shape, dtype=gates[k].dtype.real_dtype, minval=-noise/2, maxval=noise/2))
+        elif gates[k].dtype in (tf.float32, tf.float64):
+            gates[k] += tf.random_uniform(shape=gates[k].shape, dtype=gates[k].dtype.real_dtype, minval=-noise/2, maxval=noise/2)
     return gates
 
 def initialize_even_two_body_gates(ds, dtype, which, noise=0.0):
@@ -908,7 +917,7 @@ class OverlapMinimizer:
             return tf.math.reduce_mean(out.tensor, axis=0)#/np.sqrt(samples.shape[0])
             
     @staticmethod
-    def add_unitary_right(site, right_envs, mps, conj_mps, one_body_gates, two_body_gates):
+    def add_unitary_right(site, right_envs, mps, conj_mps, one_body_gates, two_body_gates, normalize=False):
         #if site is even, add an odd gate
         #if site is odd, add an even gate
         assert(site>0)
@@ -925,8 +934,11 @@ class OverlapMinimizer:
             right_envs[site - 1] = misc_mps.ncon([right_envs[site], tensor,
                                                   tf.conj(conj_mps.get_tensor(site)), two_body_gates[(site-1,site)]],
                                                  [[1,4,3,5],[-1,2,1],[-2,5,4],[-4,3,-3,2]])
+        if normalize:
+            right_envs[site - 1] /= tf.linalg.norm(right_envs[site - 1])
+            
     @staticmethod            
-    def add_unitary_left(site, left_envs, mps, conj_mps, one_body_gates, two_body_gates):
+    def add_unitary_left(site, left_envs, mps, conj_mps, one_body_gates, two_body_gates, normalize=False):
         #if site is even, add an odd gate
         #if site is odd, add an even gate
         assert(site<len(mps) - 1)
@@ -943,6 +955,8 @@ class OverlapMinimizer:
             left_envs[site + 1] = misc_mps.ncon([left_envs[site], tensor, 
                                                  tf.conj(conj_mps.get_tensor(site)), two_body_gates[(site, site + 1)]],
                                                 [[1,3,2,5],[1,2,-1],[3,4,-2],[4,-4,5,-3]])
+        if normalize:
+            left_envs[site + 1] /= tf.linalg.norm(left_envs[site + 1])
 
 
     def compute_right_envs(self, ref_mps):
@@ -957,7 +971,7 @@ class OverlapMinimizer:
 
             
     @staticmethod            
-    def get_two_body_env(sites, left_envs, right_envs, one_body_gates, mps, conj_mps, normalize=True):
+    def get_two_body_env(sites, left_envs, right_envs, one_body_gates, mps, conj_mps, normalize=False):
         """
         compute the environment of the two-body unitary at sites `sites`
         of the network <conj_mps|U|mps>
@@ -984,12 +998,12 @@ class OverlapMinimizer:
                                   tf.conj(conj_mps.get_tensor(sites[0])), tf.conj(conj_mps.get_tensor(sites[1]))],
                                  [[5,4, -1,3], [5, -3, 1], [1,-4, 6], [4,3,2], [2,-2,6]])
         if normalize:
-            Z = tf.linalg.norm(env)
-        return env/Z
+            env /= tf.linalg.norm(env)
+        return env
 
 
     @staticmethod        
-    def get_one_body_env(site, left_envs, right_envs, mps, conj_mps, ref_sym=False, normalize=True):
+    def get_one_body_env(site, left_envs, right_envs, mps, conj_mps, ref_sym=False, normalize=False):
         """
         compute the environment of the one-body unitary at site `site`
         of the network <conj_mps|U|mps>
@@ -1012,12 +1026,11 @@ class OverlapMinimizer:
                                 [[1, 3, -1, 4], [1, -2, 2], [3, 4, 2]])
 
         if normalize:
-            Z = tf.linalg.norm(env)
-
+            env /= tf.linalg.norm(env)
         if ref_sym:
-            return env + tf.transpose(tf.conj(env))
-        else:
-            return env
+            env = (env + tf.transpose(tf.conj(env)))/2.0
+            
+        return env
 
 
     @staticmethod
@@ -1294,22 +1307,24 @@ class OverlapMinimizer:
         return  g1 + 2 * C * g2, avsigns, C        
 
     @staticmethod        
-    def overlap(site,left_envs,right_envs, one_body_gates, mps, conj_mps):
+    def overlap(site, left_envs, right_envs, one_body_gates, mps, conj_mps):
         """
         compute the overlap of U * `mps` with `conj_mps`
         """
-        assert(site>0)
-        assert(site<len(mps))
-        if site%2 == 1:
-            tensor = misc_mps.ncon([mps.get_tensor(site), one_body_gates[site]], [[-1,1,-3],[-2, 1]])
-            return misc_mps.ncon([left_envs[site], tensor, tf.conj(conj_mps.get_tensor(site)),
-                                  right_envs[site]],
-                                 [[1,5,2,4], [1,2,3], [5,6,7], [3,7,4,6]])
-        elif site%2 == 0:
-            tensor = misc_mps.ncon([mps.get_tensor(site), one_body_gates[site]], [[-1,1,-3],[-2, 1]])            
-            return misc_mps.ncon([left_envs[site], tensor, tf.conj(conj_mps.get_tensor(site)),
-                            right_envs[site]],
-                           [[1,5,4,6], [1,2,3], [5,6,7], [3,7,2,4]])
+        #assert(site>0)
+        #assert(site<len(mps))
+        env = OverlapMinimizer.get_one_body_env(site, left_envs, right_envs, mps, conj_mps)
+        return misc_mps.ncon([one_body_gates[site], env],[[1,2],[1,2]])
+        # if site%2 == 1:
+        #     tensor = misc_mps.ncon([mps.get_tensor(site), one_body_gates[site]], [[-1,1,-3],[-2, 1]])
+        #     return misc_mps.ncon([left_envs[site], tensor, tf.conj(conj_mps.get_tensor(site)),
+        #                           right_envs[site]],
+        #                          [[1,5,2,4], [1,2,3], [5,6,7], [3,7,4,6]])
+        # elif site%2 == 0:
+        #     tensor = misc_mps.ncon([mps.get_tensor(site), one_body_gates[site]], [[-1,1,-3],[-2, 1]])            
+        #     return misc_mps.ncon([left_envs[site], tensor, tf.conj(conj_mps.get_tensor(site)),
+        #                     right_envs[site]],
+        #                    [[1,5,4,6], [1,2,3], [5,6,7], [3,7,2,4]])
     @staticmethod
     def two_body_update_svd_numpy(wIn):
         """
@@ -1497,7 +1512,12 @@ class OverlapMinimizer:
                     print()
 
                     
-    def minimize_one_body(self, samples=None, ref_mps=None, num_sweeps=10,  sites=None, alpha_gates=0.0, alpha_samples=1.0, alpha_ref_mps = 1.0, verbose=0):
+    def minimize_one_body(self, samples=None, ref_mps=None, num_sweeps=10,  sites=None,
+                          alpha_gates=0.0,
+                          alpha_samples=1.0,
+                          alpha_ref_mps=1.0,
+                          normalize=False,
+                          verbose=0):
         """
         minimize the overlap by optimizing over the even two-body unitaries.
         minimization runs from left to right and changes even gates one at at time.
@@ -1514,9 +1534,11 @@ class OverlapMinimizer:
             sites (iterable): the sites that should be optimized, e.g. `sites=range(0,N-1,2)` optimizes all even sites
             alpha_gates (float): see below
             alpha_samples (float): see below
-            alpha_ref_mos (float): the three `alpha_` arguments determine the mixing of the update
+            alpha_ref_mps (float): the three `alpha_` arguments determine the mixing of the update
                                    the new gate is given by `alpha_gate` * old_gate + `alpha_samples` * sample_update + `alpha_ref_mps` * ref_mps_udate
+            normalize (bool):      if `True`, normalize environments
             verbose (int):         verbosity flag; larger means more output
+
         Returns:
             c1, c2:   convergence of overlap with ref_mps and/or samples
         """
@@ -1536,12 +1558,14 @@ class OverlapMinimizer:
             
         #fixme: do right sweeps as well
         ds = self.mps.d
-        conv_1, conv_2 = 0,0
+        convs_1, convs_2 = [1E10]*len(self.mps),[1E10]*len(self.mps)
         for it in range(num_sweeps):
             if samples != None:
-                [self.add_unitary_batched_right(site, self.right_envs_batched, self.mps, samples, self.one_body_gates, self.two_body_gates) for site in reversed(range(1,len(self.mps)))]
+                [self.add_unitary_batched_right(site, self.right_envs_batched, self.mps, samples, self.one_body_gates, self.two_body_gates, normalize=normalize)
+                 for site in reversed(range(1,len(self.mps)))]
             if ref_mps !=None:
-                [self.add_unitary_right(site, self.right_envs, self.mps, ref_mps, self.one_body_gates, self.two_body_gates) for site in reversed(range(1,len(self.mps)))]                        
+                [self.add_unitary_right(site, self.right_envs, self.mps, ref_mps, self.one_body_gates, self.two_body_gates, normalize=normalize)
+                 for site in reversed(range(1,len(self.mps)))]                        
             for site in range(len(self.mps)):
                 if site in sites:
                     env = self.one_body_gates[site] * alpha_gates
@@ -1551,52 +1575,67 @@ class OverlapMinimizer:
                     if ref_mps !=None:
                         env += (alpha_ref_mps * self.get_one_body_env(site, self.left_envs, self.right_envs, self.mps, ref_mps))
                     self.one_body_gates[site] = self.one_body_update_svd_numpy(env)
+
+
+                if samples != None:
+                    overlap_1 = self.overlap_batched(site, self.left_envs_batched, self.right_envs_batched, self.one_body_gates, self.mps, samples)
+                    if site <= min(sites):                        
+                        overlap_1_old = overlap_1
+                    else:
+                        conv_1 = np.abs(overlap_1-overlaf_1_old)
+                        convs_1[site] = conv_1
+                        overlap_1_old = overlap_1
+                    
+                if ref_mps != None:
+                    overlap_2 = self.overlap(site, self.left_envs, self.right_envs, self.one_body_gates, self.mps, ref_mps)
+                    if site <= min(sites):
+                        overlap_2_old = overlap_2
+                    else:
+                        conv_2 = np.abs(overlap_2-overlap_2_old)
+                        convs_2[site] = conv_2
+                        overlap_2_old = overlap_2
+                
                 if site < (len(self.mps) - 1):                    
                     if samples != None:                                
-                        self.add_unitary_batched_left(site, self.left_envs_batched, self.mps, samples, self.one_body_gates, self.two_body_gates)
+                        self.add_unitary_batched_left(site, self.left_envs_batched, self.mps, samples, self.one_body_gates, self.two_body_gates, normalize=normalize)
                     if ref_mps !=None:
-                        self.add_unitary_left(site, self.left_envs, self.mps, ref_mps, self.one_body_gates, self.two_body_gates)
-                if (verbose > 0) and (site not in (0, len(self.mps) -1)):
-                    if samples != None:
-                        overlap_1 = self.overlap_batched(site, self.left_envs_batched, self.right_envs_batched, self.one_body_gates, self.mps, samples)
-                        if site == 1:                        
-                            conv_1 = overlap_1
-                        elif site == len(self.mps) - 2:                        
-                            conv_1 -= overlap_1            
-                            
-                    if ref_mps != None:
-                        overlap_2 = self.overlap(site, self.left_envs, self.right_envs, self.one_body_gates, self.mps, ref_mps)
-                        if site == 1:                        
-                            conv_2 = overlap_2
-                        elif site == len(self.mps) - 2:                        
-                            conv_2 -= overlap_2            
+                        self.add_unitary_left(site, self.left_envs, self.mps, ref_mps, self.one_body_gates, self.two_body_gates, normalize=normalize)
+
+                if verbose > 0 and site > 0:
                     if (ref_mps != None) and (samples !=None): 
                         stdout.write(
-                            "\r iteration  %i/%i at site %i , overlap_samples = %.6f + %.6f i, overlap_ref_mps %.6f + %.6f i" %
-                            (it, num_sweeps, site, np.real(overlap_1), np.imag(overlap_1),np.real(overlap_2), np.imag(overlap_2)))
+                            "\r  overlap_samples = %.6f + %.6f i, overlap_ref_mps %.6f + %.6f i, conv_1=%.16f, conv_2=%.16f, iteration  %i/%i at site %i ," %
+                            (np.real(overlap_1), np.imag(overlap_1),np.real(overlap_2), np.imag(overlap_2), convs_1[site], convs_2[site],it, num_sweeps, site))
                         
                     elif (ref_mps == None) and (samples !=None): 
                         stdout.write(
-                            "\r iteration  %i/%i at site %i , overlap_samples = %.6f + %.6f i" %
-                            (it, num_sweeps, site, np.real(overlap_1),np.imag(overlap_1)))
-                    if (ref_mps != None) and (samples ==None): 
+                            "\r overlap_samples = %.6f + %.6f i, conv_1=%.16f,iteration  %i/%i at site %i" %
+                            (np.real(overlap_1),np.imag(overlap_1), convs_1[site],it, num_sweeps, site))
+                    if (ref_mps != None) and (samples ==None):
                         stdout.write(
-                            "\r iteration  %i/%i at site %i , overlap_ref_mps = %.6f + %.6f i" %
-                            (it, num_sweeps, site, np.real(overlap_2), np.imag(overlap_2)))
+                            "\r overlap_ref_mps = %.6f + %.6f i conv_2=%.6E, iteration  %i/%i at site %i" %
+                            (np.real(overlap_2), np.abs(np.imag(overlap_2)),convs_2[site],it, num_sweeps,site))
                     stdout.flush()
                 if verbose > 1:
                     print()
-
         if (ref_mps != None) and (samples != None):
-            return np.abs(conv_1), np.abs(conv_2)
+            return np.max(conv_1), np.max(conv_2)
         elif (ref_mps == None) and (samples == None):
-            return np.abs(conv_1), None
+            return np.max(conv_1), None
         elif (ref_mps != None) and (samples == None):
-            return np.abs(conv_2), None
+            return np.max(conv_2), None
         elif (ref_mps == None) and (samples == None):
             return None, None
 
-    def minimize_two_body(self, samples=None, ref_mps=None, num_sweeps=10, sites=None, alpha_gates=0.0, alpha_samples=1.0, alpha_ref_mps = 1.0, verbose=0):
+    def minimize_two_body(self, samples=None,
+                          ref_mps=None,
+                          num_sweeps=10,
+                          sites=None,
+                          alpha_gates=0.0,
+                          alpha_samples=1.0,
+                          alpha_ref_mps=1.0,
+                          normalize=False,
+                          verbose=0):
         """
         minimize the overlap by optimizing over the even two-body unitaries.
         minimization runs from left to right and changes even gates one at at time.
@@ -1635,11 +1674,14 @@ class OverlapMinimizer:
         if sites is None:
             sites = range(len(self.mps) - 1)
 
+        convs_1, convs_2 = [1E100] * len(self.mps),[1E100] * len(self.mps)
         for it in range(num_sweeps):
             if samples != None:
-                [self.add_unitary_batched_right(site, self.right_envs_batched, self.mps, samples, self.one_body_gates, self.two_body_gates) for site in reversed(range(1,len(self.mps)))]
+                [self.add_unitary_batched_right(site, self.right_envs_batched, self.mps, samples, self.one_body_gates, self.two_body_gates, normalize=normalize)
+                 for site in reversed(range(1,len(self.mps)))]
             if ref_mps !=None:
-                [self.add_unitary_right(site, self.right_envs, self.mps, ref_mps, self.one_body_gates, self.two_body_gates) for site in reversed(range(1,len(self.mps)))]                        
+                [self.add_unitary_right(site, self.right_envs, self.mps, ref_mps, self.one_body_gates, self.two_body_gates, normalize=normalize)
+                 for site in reversed(range(1,len(self.mps)))]                        
             for site in range(0,len(self.mps) - 1):
                 if site in sites:
                     env = self.two_body_gates[(site, site+1)] * alpha_gates                
@@ -1653,33 +1695,56 @@ class OverlapMinimizer:
                     self.two_body_gates[(site, site+1)] = self.two_body_update_svd_numpy(env)
                 if site < len(self.mps) - 1:                    
                     if samples != None:                                
-                        self.add_unitary_batched_left(site, self.left_envs_batched, self.mps, samples, self.one_body_gates, self.two_body_gates)
-                    if ref_mps !=None:                
-                        self.add_unitary_left(site, self.left_envs, self.mps, ref_mps, self.one_body_gates, self.two_body_gates)
+                        self.add_unitary_batched_left(site, self.left_envs_batched, self.mps, samples, self.one_body_gates, self.two_body_gates, normalize=normalize)
+                    if ref_mps !=None:
+                        self.add_unitary_left(site, self.left_envs, self.mps, ref_mps, self.one_body_gates, self.two_body_gates, normalize=normalize)
 
+
+                if samples != None:
+                    overlap_1 = self.overlap_batched(site, self.left_envs_batched, self.right_envs_batched, self.one_body_gates, self.mps, samples)
+                    if site <= min(sites):                        
+                        overlap_1_old = overlap_1
+                    else:
+                        conv_1 = np.abs(overlap_1-overlaf_1_old)
+                        convs_1[site] = conv_1
+                        overlap_1_old = overlap_1
+                    
+                if ref_mps != None:
+                    overlap_2 = self.overlap(site, self.left_envs, self.right_envs, self.one_body_gates, self.mps, ref_mps)
+                    if site <= min(sites):
+                        overlap_2_old = overlap_2
+                    else:
+                        conv_2 = np.abs(overlap_2-overlap_2_old)
+                        convs_2[site] = conv_2
+                        overlap_2_old = overlap_2
+                    
                 if verbose > 0 and site > 0:
-                    if samples != None:
-                        overlap_1 = self.overlap_batched(site, self.left_envs_batched, self.right_envs_batched, self.one_body_gates, self.mps, samples)
-                    if ref_mps != None:
-                        overlap_2 = self.overlap(site, self.left_envs, self.right_envs, self.one_body_gates, self.mps, ref_mps)
                     if (ref_mps != None) and (samples !=None): 
                         stdout.write(
-                            "\r iteration  %i/%i at site %i , overlap_samples = %.6f + %.6f i, overlap_ref_mps %.6f + %.6f i" %
-                            (it, num_sweeps, site, np.real(overlap_1), np.imag(overlap_1),np.real(overlap_2), np.imag(overlap_2)))
+                            "\r  overlap_samples = %.6f + %.6f i, overlap_ref_mps %.6f + %.6f i, conv_1=%.16f, conv_2=%.16f, iteration  %i/%i at site %i ," %
+                            (np.real(overlap_1), np.imag(overlap_1),np.real(overlap_2), np.imag(overlap_2), convs_1[site], convs_2[site],it, num_sweeps, site))
                         
                     elif (ref_mps == None) and (samples !=None): 
                         stdout.write(
-                            "\r iteration  %i/%i at site %i , overlap_samples = %.6f + %.6f i" %
-                            (it, num_sweeps, site, np.real(overlap_1),np.imag(overlap_1)))
-                    if (ref_mps != None) and (samples ==None): 
+                            "\r overlap_samples = %.6f + %.6f i, conv_1=%.16f,iteration  %i/%i at site %i" %
+                            (np.real(overlap_1),np.imag(overlap_1), convs_1[site],it, num_sweeps, site))
+                    if (ref_mps != None) and (samples ==None):
                         stdout.write(
-                            "\r iteration  %i/%i at site %i , overlap_ref_mps = %.6f + %.6f i" %
-                            (it, num_sweeps, site, np.real(overlap_2), np.imag(overlap_2)))
+                            "\r overlap_ref_mps = %.6f + %.6f i conv_2=%.6E, iteration  %i/%i at site %i" %
+                            (np.real(overlap_2), np.abs(np.imag(overlap_2)),convs_2[site],it, num_sweeps,site))
                     stdout.flush()
 
                 if verbose > 1:
                     print()
 
+        if (ref_mps != None) and (samples != None):
+            return np.max(conv_1), np.max(conv_2)
+        elif (ref_mps == None) and (samples == None):
+            return np.max(conv_1), None
+        elif (ref_mps != None) and (samples == None):
+            return np.max(conv_2), None
+        elif (ref_mps == None) and (samples == None):
+            return None, None
                     
     def minimize_even(self, samples=None, ref_mps=None, num_sweeps=10,  alpha_gates=0.0, alpha_samples=1.0, alpha_ref_mps = 1.0, verbose=0):
         """
