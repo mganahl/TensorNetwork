@@ -67,7 +67,7 @@ def read_and_convert_to_tf(prefix,  dtype=tf.float64):
         elif n == len(tensors) -1 :
             tensors_new.append(np.transpose(np.expand_dims(tensors[n],2), (1,2,0)).astype(dtype.as_numpy_dtype))
             
-    return [tf.transpose(tf.convert_to_tensor(tensors[n]),(0,2,1)) for n in range(len(tensors_new))] #the index order of the PyTeN and TensorNetwork MPS is different
+    return [tf.transpose(tf.convert_to_tensor(tensors_new[n]),(0,2,1)) for n in range(len(tensors_new))] #the index order of the PyTeN and TensorNetwork MPS is different
 
 
 #%matplotlib qt
