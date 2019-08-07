@@ -17,6 +17,7 @@ from __future__ import division
 from __future__ import print_function
 import sys
 import copy
+import pickle
 import time
 import tensornetwork as tn
 import numpy as np
@@ -149,7 +150,7 @@ def initialize_even_two_body_gates(ds, dtype, which, noise=0.0):
     """
     two_body_gates = {}
     if which in ('i', 'identities', 'eye', 'e'):
-        for site in range(0,len(ds) - 1, 2):
+        for site in range(0,len(ds), 2):
             if dtype in (tf.float32, tf.float64):
                 two_body_gates[(site, site+1)] = tf.reshape(tf.eye(ds[site]*ds[site+1], dtype=dtype), 
                                                                  (ds[site], ds[site+1], ds[site], ds[site+1]))
@@ -160,7 +161,7 @@ def initialize_even_two_body_gates(ds, dtype, which, noise=0.0):
                                                                  (ds[site], ds[site+1], ds[site], ds[site+1]))
 
     elif which in ('h','haar'):
-        for site in range(0,len(ds) - 1, 2):
+        for site in range(0,len(ds), 2):
             two_body_gates[(site, site+1)] = tf.reshape(misc_mps.haar_random_unitary((ds[site] * ds[site+1], ds[site] * ds[site+1]), dtype=dtype), 
                                                              (ds[site], ds[site+1], ds[site], ds[site+1]))
     else:
@@ -470,7 +471,24 @@ class OverlapMinimizer:
         self.right_envs_batched = {}
         self.left_envs_batched = {}        
 
+    def save(self,name=None):
+        data = {'one_body_gates': self.one_body_gates, 'two_body_gates': self.two_body_gates, 'mps': self.mps,'name':self.name}
+        if name is None:
+            name = self.name
+        with open(name + '.mz', 'wb') as f:
+            pickle.dump(data,f)
 
+    @classmethod
+    def load(cls, name):
+        with open(name, 'rb') as f:
+            data = pickle.load(f)
+        one_body_gates = data['one_body_gates']
+        two_body_gates= data['two_body_gates']
+        mps = data['mps']
+        name = data['name']
+        return  cls(mps=mps,one_body_gates=one_body_gates,
+                    two_body_gates=two_body_gates,
+                    name=name)
     def reset_two_body_gates(self, which='identities', dtype=None, noise=0.0):
         """
         reset the two body gates
@@ -870,51 +888,57 @@ class OverlapMinimizer:
         
     @staticmethod        
     def overlap_batched(site, left_envs, right_envs, one_body_gates, mps, samples):
-        if site%2 == 1:
-            ds = mps.d            
-            bnet = btn.BatchTensorNetwork()
-            lenv_node = bnet.add_node(tf.expand_dims(left_envs[site],4))
-            renv_node = bnet.add_node(right_envs[site])
-            unitary_node = bnet.add_node(one_body_gates[site])
-            sample_node = bnet.add_node(tf.expand_dims(tf.one_hot(samples[:, site], ds[site], dtype=mps.dtype),2))
-            tensor_node = bnet.add_node(mps.get_tensor(site))
 
-            e1 = bnet.connect(lenv_node[1], tensor_node[0])
-            e2 = bnet.connect(renv_node[1], tensor_node[2])
-            e3 = bnet.connect(unitary_node[1], tensor_node[1])
-            e4 = bnet.connect(lenv_node[2], unitary_node[0])
-            e5 = bnet.connect(lenv_node[3], renv_node[2])
-            e6 = bnet.connect(renv_node[3], sample_node[1])
-            e7 = bnet.connect(lenv_node[4], sample_node[2])
+
+
+        env = tf.math.reduce_mean(OverlapMinimizer.get_one_body_env_batched(site,left_envs,right_envs, mps, samples), axis=0)
+        return misc_mps.ncon([env, one_body_gates[site]],[[1,2], [1,2]])
+
+        # if site%2 == 1:
+        #     ds = mps.d            
+        #     bnet = btn.BatchTensorNetwork()
+        #     lenv_node = bnet.add_node(tf.expand_dims(left_envs[site],4))
+        #     renv_node = bnet.add_node(right_envs[site])
+        #     unitary_node = bnet.add_node(one_body_gates[site])
+        #     sample_node = bnet.add_node(tf.expand_dims(tf.one_hot(samples[:, site], ds[site], dtype=mps.dtype),2))
+        #     tensor_node = bnet.add_node(mps.get_tensor(site))
+
+        #     e1 = bnet.connect(lenv_node[1], tensor_node[0])
+        #     e2 = bnet.connect(renv_node[1], tensor_node[2])
+        #     e3 = bnet.connect(unitary_node[1], tensor_node[1])
+        #     e4 = bnet.connect(lenv_node[2], unitary_node[0])
+        #     e5 = bnet.connect(lenv_node[3], renv_node[2])
+        #     e6 = bnet.connect(renv_node[3], sample_node[1])
+        #     e7 = bnet.connect(lenv_node[4], sample_node[2])
             
-            tmp = bnet.contract_between(tensor_node, unitary_node)
-            tmp = bnet.contract_between(lenv_node, tmp)
-            tmp = bnet.batched_contract_between(tmp,renv_node, lenv_node[0], renv_node[0])
-            out = bnet.batched_contract_between(tmp, sample_node, lenv_node[0], sample_node[0])
-            return tf.math.reduce_mean(out.tensor, axis=0)#/np.sqrt(samples.shape[0])
+        #     tmp = bnet.contract_between(tensor_node, unitary_node)
+        #     tmp = bnet.contract_between(lenv_node, tmp)
+        #     tmp = bnet.batched_contract_between(tmp,renv_node, lenv_node[0], renv_node[0])
+        #     out = bnet.batched_contract_between(tmp, sample_node, lenv_node[0], sample_node[0])
+        #     return tf.math.reduce_mean(out.tensor, axis=0)#/np.sqrt(samples.shape[0])
 
-        elif site%2 == 0:
-            ds = mps.d            
-            bnet = btn.BatchTensorNetwork()
-            lenv_node = bnet.add_node(tf.expand_dims(left_envs[site],4))
-            renv_node = bnet.add_node(right_envs[site])
-            unitary_node = bnet.add_node(one_body_gates[site])
-            sample_node = bnet.add_node(tf.expand_dims(tf.one_hot(samples[:, site], ds[site], dtype=mps.dtype),2))
-            tensor_node = bnet.add_node(mps.get_tensor(site))
+        # elif site%2 == 0:
+        #     ds = mps.d            
+        #     bnet = btn.BatchTensorNetwork()
+        #     lenv_node = bnet.add_node(tf.expand_dims(left_envs[site],4))
+        #     renv_node = bnet.add_node(right_envs[site])
+        #     unitary_node = bnet.add_node(one_body_gates[site])
+        #     sample_node = bnet.add_node(tf.expand_dims(tf.one_hot(samples[:, site], ds[site], dtype=mps.dtype),2))
+        #     tensor_node = bnet.add_node(mps.get_tensor(site))
 
-            e1 = bnet.connect(lenv_node[1], tensor_node[0])
-            e2 = bnet.connect(renv_node[1], tensor_node[2])
-            e3 = bnet.connect(tensor_node[1], unitary_node[1])
-            e4 = bnet.connect(renv_node[2], unitary_node[0])
-            e5 = bnet.connect(lenv_node[2], renv_node[3])
-            e6 = bnet.connect(lenv_node[3], sample_node[1])
-            e7 = bnet.connect(lenv_node[4], sample_node[2])
+        #     e1 = bnet.connect(lenv_node[1], tensor_node[0])
+        #     e2 = bnet.connect(renv_node[1], tensor_node[2])
+        #     e3 = bnet.connect(tensor_node[1], unitary_node[1])
+        #     e4 = bnet.connect(renv_node[2], unitary_node[0])
+        #     e5 = bnet.connect(lenv_node[2], renv_node[3])
+        #     e6 = bnet.connect(lenv_node[3], sample_node[1])
+        #     e7 = bnet.connect(lenv_node[4], sample_node[2])
             
-            tmp = bnet.contract_between(tensor_node, unitary_node)
-            tmp = bnet.contract_between(lenv_node, tmp)
-            tmp = bnet.batched_contract_between(tmp,renv_node, lenv_node[0], renv_node[0])
-            out = bnet.batched_contract_between(tmp, sample_node, lenv_node[0], sample_node[0])
-            return tf.math.reduce_mean(out.tensor, axis=0)#/np.sqrt(samples.shape[0])
+        #     tmp = bnet.contract_between(tensor_node, unitary_node)
+        #     tmp = bnet.contract_between(lenv_node, tmp)
+        #     tmp = bnet.batched_contract_between(tmp,renv_node, lenv_node[0], renv_node[0])
+        #     out = bnet.batched_contract_between(tmp, sample_node, lenv_node[0], sample_node[0])
+        #     return tf.math.reduce_mean(out.tensor, axis=0)#/np.sqrt(samples.shape[0])
             
     @staticmethod
     def add_unitary_right(site, right_envs, mps, conj_mps, one_body_gates, two_body_gates, normalize=False):
@@ -1147,8 +1171,8 @@ class OverlapMinimizer:
         elif mps.dtype in (tf.float64, tf.float32):            
             g2 = tape.gradient(log_psi, g)
         del tape
-        #return  g1 + 2 * C * g2, avsigns, C
-        return  g1, avsigns, C    
+        return  g1 + 2 * C * g2, avsigns, C
+        #return  g1, avsigns, C    
 
     
     @staticmethod
@@ -1418,7 +1442,7 @@ class OverlapMinimizer:
 
     def minimize_layerwise(self, ref_mps, num_sweeps, alpha = 1.0, verbose=0):
         """
-
+        deprecated
         minimize the overlap by optimizing over the even  and odd two-body unitaries,
         alternating between even and odd layer.
         minimization runs from left to right and right to left, and changes `gates` one at at time.
@@ -1561,7 +1585,7 @@ class OverlapMinimizer:
         convs_1, convs_2 = [1E10]*len(self.mps),[1E10]*len(self.mps)
         for it in range(num_sweeps):
             if samples != None:
-                [self.add_unitary_batched_right(site, self.right_envs_batched, self.mps, samples, self.one_body_gates, self.two_body_gates, normalize=normalize)
+                [self.add_unitary_batched_right(site, self.right_envs_batched, self.mps, samples, self.one_body_gates, self.two_body_gates)
                  for site in reversed(range(1,len(self.mps)))]
             if ref_mps !=None:
                 [self.add_unitary_right(site, self.right_envs, self.mps, ref_mps, self.one_body_gates, self.two_body_gates, normalize=normalize)
@@ -1582,7 +1606,7 @@ class OverlapMinimizer:
                     if site <= min(sites):                        
                         overlap_1_old = overlap_1
                     else:
-                        conv_1 = np.abs(overlap_1-overlaf_1_old)
+                        conv_1 = np.abs(overlap_1-overlap_1_old)
                         convs_1[site] = conv_1
                         overlap_1_old = overlap_1
                     
@@ -1597,7 +1621,7 @@ class OverlapMinimizer:
                 
                 if site < (len(self.mps) - 1):                    
                     if samples != None:                                
-                        self.add_unitary_batched_left(site, self.left_envs_batched, self.mps, samples, self.one_body_gates, self.two_body_gates, normalize=normalize)
+                        self.add_unitary_batched_left(site, self.left_envs_batched, self.mps, samples, self.one_body_gates, self.two_body_gates)
                     if ref_mps !=None:
                         self.add_unitary_left(site, self.left_envs, self.mps, ref_mps, self.one_body_gates, self.two_body_gates, normalize=normalize)
 
@@ -1619,11 +1643,11 @@ class OverlapMinimizer:
                 if verbose > 1:
                     print()
         if (ref_mps != None) and (samples != None):
-            return np.max(conv_1), np.max(conv_2)
+            return np.max(convs_1), np.max(convs_2)
         elif (ref_mps == None) and (samples == None):
-            return np.max(conv_1), None
+            return np.max(convs_1), None
         elif (ref_mps != None) and (samples == None):
-            return np.max(conv_2), None
+            return np.max(convs_2), None
         elif (ref_mps == None) and (samples == None):
             return None, None
 
@@ -1677,7 +1701,7 @@ class OverlapMinimizer:
         convs_1, convs_2 = [1E100] * len(self.mps),[1E100] * len(self.mps)
         for it in range(num_sweeps):
             if samples != None:
-                [self.add_unitary_batched_right(site, self.right_envs_batched, self.mps, samples, self.one_body_gates, self.two_body_gates, normalize=normalize)
+                [self.add_unitary_batched_right(site, self.right_envs_batched, self.mps, samples, self.one_body_gates, self.two_body_gates)
                  for site in reversed(range(1,len(self.mps)))]
             if ref_mps !=None:
                 [self.add_unitary_right(site, self.right_envs, self.mps, ref_mps, self.one_body_gates, self.two_body_gates, normalize=normalize)
@@ -1695,7 +1719,7 @@ class OverlapMinimizer:
                     self.two_body_gates[(site, site+1)] = self.two_body_update_svd_numpy(env)
                 if site < len(self.mps) - 1:                    
                     if samples != None:                                
-                        self.add_unitary_batched_left(site, self.left_envs_batched, self.mps, samples, self.one_body_gates, self.two_body_gates, normalize=normalize)
+                        self.add_unitary_batched_left(site, self.left_envs_batched, self.mps, samples, self.one_body_gates, self.two_body_gates)
                     if ref_mps !=None:
                         self.add_unitary_left(site, self.left_envs, self.mps, ref_mps, self.one_body_gates, self.two_body_gates, normalize=normalize)
 
@@ -1705,7 +1729,7 @@ class OverlapMinimizer:
                     if site <= min(sites):                        
                         overlap_1_old = overlap_1
                     else:
-                        conv_1 = np.abs(overlap_1-overlaf_1_old)
+                        conv_1 = np.abs(overlap_1-overlap_1_old)
                         convs_1[site] = conv_1
                         overlap_1_old = overlap_1
                     
@@ -1721,12 +1745,11 @@ class OverlapMinimizer:
                 if verbose > 0 and site > 0:
                     if (ref_mps != None) and (samples !=None): 
                         stdout.write(
-                            "\r  overlap_samples = %.6f + %.6f i, overlap_ref_mps %.6f + %.6f i, conv_1=%.16f, conv_2=%.16f, iteration  %i/%i at site %i ," %
+                            "\r  overlap_samples = %.6E + %.6E i, overlap_ref_mps %.6E + %.6fE i, conv_1=%.6E, conv_2=%.6E, iteration  %i/%i at site %i ," %
                             (np.real(overlap_1), np.imag(overlap_1),np.real(overlap_2), np.imag(overlap_2), convs_1[site], convs_2[site],it, num_sweeps, site))
-                        
                     elif (ref_mps == None) and (samples !=None): 
                         stdout.write(
-                            "\r overlap_samples = %.6f + %.6f i, conv_1=%.16f,iteration  %i/%i at site %i" %
+                            "\r overlap_samples = %.6E + %.6E i, conv_1=%.6E,iteration  %i/%i at site %i" %
                             (np.real(overlap_1),np.imag(overlap_1), convs_1[site],it, num_sweeps, site))
                     if (ref_mps != None) and (samples ==None):
                         stdout.write(
@@ -1738,11 +1761,11 @@ class OverlapMinimizer:
                     print()
 
         if (ref_mps != None) and (samples != None):
-            return np.max(conv_1), np.max(conv_2)
+            return np.max(convs_1), np.max(convs_2)
         elif (ref_mps == None) and (samples == None):
-            return np.max(conv_1), None
+            return np.max(convs_1), None
         elif (ref_mps != None) and (samples == None):
-            return np.max(conv_2), None
+            return np.max(convs_2), None
         elif (ref_mps == None) and (samples == None):
             return None, None
                     
