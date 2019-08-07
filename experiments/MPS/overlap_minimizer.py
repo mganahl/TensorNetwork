@@ -59,8 +59,6 @@ def absorb_one_body_gates(mps, one_body_gates):
     tensors = [misc_mps.ncon([mps.get_tensor(site), one_body_gates[site]],[[-1,1,-3], [-2, 1]]) 
                for site in range(len(mps))]
     mps_out = MPS.FiniteMPSCentralGauge(tensors)
-    #     mps_out.position(0)
-    #     mps_out.position(len(mps_out), normalize=True)
     return mps_out   
  
 
@@ -382,7 +380,7 @@ def initialize_one_body_generators(ds, dtype, which='identities'):
 
 
 
-class OverlapMinimizer:
+class OverlapMaximizer:
     """
     minimizes the overlap between `mps` and a given reference mps, using a double layer of two-body unitaries.
     For now `mps` has to have even length
@@ -390,7 +388,7 @@ class OverlapMinimizer:
     """
     def __init__(self, mps, one_body_gates=None, two_body_gates=None, name='overlap_minimizer'):
         """
-        initialize an OverlapMinimizer object
+        initialize an OverlapMaximizer object
         This object minimizes the overlab between `mps` and a reference mps 
         using a unitary circuit with three layers:
         the first layer 1 contains `N` one-body unitaries, as provided in `one_body_gates`
@@ -891,7 +889,7 @@ class OverlapMinimizer:
 
 
 
-        env = tf.math.reduce_mean(OverlapMinimizer.get_one_body_env_batched(site,left_envs,right_envs, mps, samples), axis=0)
+        env = tf.math.reduce_mean(OverlapMaximizer.get_one_body_env_batched(site,left_envs,right_envs, mps, samples), axis=0)
         return misc_mps.ncon([env, one_body_gates[site]],[[1,2], [1,2]])
 
         # if site%2 == 1:
@@ -1064,7 +1062,7 @@ class OverlapMinimizer:
         one-body unitaries are parametrized as tf.linalg.expm(g - herm(g)) with g an arbitrary real or complex matrix g.
         The gradient takes this into account
         """
-        env = OverlapMinimizer.get_one_body_env(site,left_envs,right_envs, mps, conj_mps)
+        env = OverlapMaximizer.get_one_body_env(site,left_envs,right_envs, mps, conj_mps)
         with tf.GradientTape() as tape:
             g = one_body_generators[site]
             tape.watch(g)
@@ -1072,7 +1070,7 @@ class OverlapMinimizer:
                 tmp = misc_mps.ncon([env, tf.linalg.expm(g - tf.conj(tf.transpose(g)))],[[1,2],[1,2]])
                 #res = (1.0 + 1j)/2 * tmp + (1.0 - 1j)/2 * tf.conj(tmp)
                 #overlap = tf.real(tmp) - tf.abs(tf.imag(tmp))
-                overlap = tmp + tf.conj(tmp)
+                overlap = 1/2*(tmp + tf.conj(tmp))
                 #the ones below shift the means of the signs around in the complex plane
                 #overlap = -tf.real(tmp) + tf.abs(tf.imag(tmp))
                 #overlap = tf.real(tmp) - tf.abs(tf.imag(tmp))                
@@ -1092,7 +1090,7 @@ class OverlapMinimizer:
         The gradient takes this into account
         """
         
-        env = OverlapMinimizer.get_two_body_env(sites, left_envs, right_envs, one_body_gates, mps, conj_mps)
+        env = OverlapMaximizer.get_two_body_env(sites, left_envs, right_envs, one_body_gates, mps, conj_mps)
         ds = mps.d
         with tf.GradientTape() as tape:
             g = two_body_generators[sites]
@@ -1141,7 +1139,7 @@ class OverlapMinimizer:
             avsigns( tf.Tensor):   the average current sign
             C (tf.Tensor (scalar)):the value of the cost function
         """
-        env = OverlapMinimizer.get_one_body_env_batched(site,left_envs,right_envs, mps, samples)
+        env = OverlapMaximizer.get_one_body_env_batched(site,left_envs,right_envs, mps, samples)
         ds = mps.d
         with tf.GradientTape(persistent=True) as tape:
             g = one_body_generators[site]
@@ -1198,7 +1196,7 @@ class OverlapMinimizer:
             avsigns( tf.Tensor):   the average current sign
             C (tf.Tensor (scalar)):the value of the cost function
         """
-        env = OverlapMinimizer.get_one_body_env_batched(site,left_envs,right_envs, mps, samples)
+        env = OverlapMaximizer.get_one_body_env_batched(site,left_envs,right_envs, mps, samples)
         ds = mps.d
         with tf.GradientTape(persistent=True) as tape:
             g = one_body_generators[site]
@@ -1241,7 +1239,7 @@ class OverlapMinimizer:
             avsigns( tf.Tensor):   the average current sign
             C (tf.Tensor (scalar)):the value of the cost function
         """
-        env = OverlapMinimizer.get_one_body_env_batched(site,left_envs,right_envs, mps, samples)
+        env = OverlapMaximizer.get_one_body_env_batched(site,left_envs,right_envs, mps, samples)
         ds = mps.d
         with tf.GradientTape(persistent=True) as tape:
             g = one_body_generators[site]
@@ -1297,7 +1295,7 @@ class OverlapMinimizer:
             C (tf.Tensor (scalar)):the value of the cost function
           """
         
-        env = OverlapMinimizer.get_two_body_env_batched(sites, left_envs, right_envs, one_body_gates, mps, samples)#shape (Nt, d,d,d,d)
+        env = OverlapMaximizer.get_two_body_env_batched(sites, left_envs, right_envs, one_body_gates, mps, samples)#shape (Nt, d,d,d,d)
         ds = mps.d
         with tf.GradientTape(persistent=True) as tape:
             g = two_body_generators[sites]
@@ -1337,7 +1335,7 @@ class OverlapMinimizer:
         """
         #assert(site>0)
         #assert(site<len(mps))
-        env = OverlapMinimizer.get_one_body_env(site, left_envs, right_envs, mps, conj_mps)
+        env = OverlapMaximizer.get_one_body_env(site, left_envs, right_envs, mps, conj_mps)
         return misc_mps.ncon([one_body_gates[site], env],[[1,2],[1,2]])
         # if site%2 == 1:
         #     tensor = misc_mps.ncon([mps.get_tensor(site), one_body_gates[site]], [[-1,1,-3],[-2, 1]])
@@ -1582,7 +1580,7 @@ class OverlapMinimizer:
             
         #fixme: do right sweeps as well
         ds = self.mps.d
-        convs_1, convs_2 = [1E10]*len(self.mps),[1E10]*len(self.mps)
+        convs_1, convs_2 = [0]*len(self.mps),[0]*len(self.mps)
         for it in range(num_sweeps):
             if samples != None:
                 [self.add_unitary_batched_right(site, self.right_envs_batched, self.mps, samples, self.one_body_gates, self.two_body_gates)
@@ -1698,7 +1696,7 @@ class OverlapMinimizer:
         if sites is None:
             sites = range(len(self.mps) - 1)
 
-        convs_1, convs_2 = [1E100] * len(self.mps),[1E100] * len(self.mps)
+        convs_1, convs_2 = [0] * (len(self.mps)-1),[0] * (len(self.mps)-1)
         for it in range(num_sweeps):
             if samples != None:
                 [self.add_unitary_batched_right(site, self.right_envs_batched, self.mps, samples, self.one_body_gates, self.two_body_gates)
