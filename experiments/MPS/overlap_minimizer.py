@@ -2338,7 +2338,7 @@ class OverlapMaximizer:
                     for site in reversed(range(1, len(self.mps)))
                 ]
                 
-            for site in range(0, len(self.mps) - 2):
+            for site in range(0, len(self.mps) - 1):
                 if site in sites:
                     env = self.two_body_gates[(site, site + 1)] * alpha_gates
                     if samples != None:
