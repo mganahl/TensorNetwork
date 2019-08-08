@@ -2075,28 +2075,29 @@ class OverlapMaximizer:
         #fixme: do right sweeps as well
         ds = self.mps.d
         convs_1, convs_2 = [0] * len(self.mps), [0] * len(self.mps)
+        if samples != None:
+            [
+                self.add_unitary_batched_right(site,
+                                               self.right_envs_batched,
+                                               self.mps, samples,
+                                               self.one_body_gates,
+                                               self.two_body_gates)
+                for site in reversed(range(1, len(self.mps)))
+            ]
+        if ref_mps != None:
+            [
+                self.add_unitary_right(site,
+                                       self.right_envs,
+                                       self.mps,
+                                       ref_mps,
+                                       self.one_body_gates,
+                                       self.two_body_gates,
+                                       normalize=normalize)
+                for site in reversed(range(1, len(self.mps)))
+            ]
+        
         for it in range(num_sweeps):
-            if samples != None:
-                [
-                    self.add_unitary_batched_right(site,
-                                                   self.right_envs_batched,
-                                                   self.mps, samples,
-                                                   self.one_body_gates,
-                                                   self.two_body_gates)
-                    for site in reversed(range(1, len(self.mps)))
-                ]
-            if ref_mps != None:
-                [
-                    self.add_unitary_right(site,
-                                           self.right_envs,
-                                           self.mps,
-                                           ref_mps,
-                                           self.one_body_gates,
-                                           self.two_body_gates,
-                                           normalize=normalize)
-                    for site in reversed(range(1, len(self.mps)))
-                ]
-            for site in range(len(self.mps)):
+            for site in range(len(self.mps) - 1):
                 if site in sites:
                     env = self.one_body_gates[site] * alpha_gates
                     if samples != None:
@@ -2154,7 +2155,7 @@ class OverlapMaximizer:
                                               self.two_body_gates,
                                               normalize=normalize)
 
-                if verbose > 0 and site > 0:
+                if verbose > 0:
                     if (ref_mps != None) and (samples != None):
                         stdout.write(
                             "\r  overlap_samples = %.6f + %.6f i, overlap_ref_mps %.6f + %.6f i, conv_1=%.16f, "
@@ -2177,6 +2178,84 @@ class OverlapMaximizer:
                     stdout.flush()
                 if verbose > 1:
                     print()
+
+
+            for site in reversed(range(1, len(self.mps))):
+                if site in sites:
+                    env = self.one_body_gates[site] * alpha_gates
+                    if samples != None:
+                        env += (
+                            alpha_samples *
+                            tf.math.reduce_mean(self.get_one_body_env_batched(
+                                site, self.left_envs_batched,
+                                self.right_envs_batched, self.mps, samples),
+                                                axis=0))
+                    if ref_mps != None:
+                        env += (alpha_ref_mps * self.get_one_body_env(
+                            site, self.left_envs, self.right_envs, self.mps,
+                            ref_mps))
+                    self.one_body_gates[site] = self.one_body_update_svd_numpy(
+                        env)
+
+                if samples != None:
+                    overlap_1 = self.overlap_batched(site,
+                                                     self.left_envs_batched,
+                                                     self.right_envs_batched,
+                                                     self.one_body_gates,
+                                                     self.mps, samples)
+                    conv_1 = np.abs(overlap_1 - overlap_1_old)
+                    convs_1[site] = conv_1
+                    overlap_1_old = overlap_1
+
+                if ref_mps != None:
+                    overlap_2 = self.overlap(site, self.left_envs,
+                                             self.right_envs,
+                                             self.one_body_gates, self.mps,
+                                             ref_mps)
+                    conv_2 = np.abs(overlap_2 - overlap_2_old)
+                    convs_2[site] = conv_2
+                    overlap_2_old = overlap_2
+
+                if site > 0:
+                    if samples != None:
+                        self.add_unitary_batched_right(site,
+                                                       self.left_envs_batched,
+                                                       self.mps, samples,
+                                                       self.one_body_gates,
+                                                       self.two_body_gates)
+                    if ref_mps != None:
+                        self.add_unitary_right(site,
+                                               self.left_envs,
+                                               self.mps,
+                                               ref_mps,
+                                               self.one_body_gates,
+                                               self.two_body_gates,
+                                               normalize=normalize)
+
+                if verbose > 0:
+                    if (ref_mps != None) and (samples != None):
+                        stdout.write(
+                            "\r  overlap_samples = %.6f + %.6f i, overlap_ref_mps %.6f + %.6f i, conv_1=%.16f, "
+                            "conv_2=%.16f, iteration  %i/%i at site %i ,"
+                            % (np.real(overlap_1), np.imag(overlap_1),
+                               np.real(overlap_2), np.imag(overlap_2),
+                               convs_1[site], convs_2[site], it, num_sweeps,
+                               site))
+
+                    elif (ref_mps == None) and (samples != None):
+                        stdout.write(
+                            "\r overlap_samples = %.6f + %.6f i, conv_1=%.16f,iteration  %i/%i at site %i"
+                            % (np.real(overlap_1), np.imag(overlap_1),
+                               convs_1[site], it, num_sweeps, site))
+                    if (ref_mps != None) and (samples == None):
+                        stdout.write(
+                            "\r overlap_ref_mps = %.6f + %.6f i conv_2=%.6E, iteration  %i/%i at site %i"
+                            % (np.real(overlap_2), np.abs(np.imag(overlap_2)),
+                               convs_2[site], it, num_sweeps, site))
+                    stdout.flush()
+                if verbose > 1:
+                    print()
+                    
         if (ref_mps != None) and (samples != None):
             return np.max(convs_1), np.max(convs_2)
         elif (ref_mps == None) and (samples == None):
@@ -2235,28 +2314,29 @@ class OverlapMaximizer:
             sites = range(len(self.mps) - 1)
 
         convs_1, convs_2 = [0] * (len(self.mps) - 1), [0] * (len(self.mps) - 1)
+        if samples != None:
+            [
+                self.add_unitary_batched_right(site,
+                                               self.right_envs_batched,
+                                               self.mps, samples,
+                                               self.one_body_gates,
+                                               self.two_body_gates)
+                for site in reversed(range(1, len(self.mps)))
+            ]
+        if ref_mps != None:
+            [
+                self.add_unitary_right(site,
+                                       self.right_envs,
+                                       self.mps,
+                                       ref_mps,
+                                       self.one_body_gates,
+                                       self.two_body_gates,
+                                       normalize=normalize)
+                for site in reversed(range(1, len(self.mps)))
+            ]
+        
         for it in range(num_sweeps):
-            if samples != None:
-                [
-                    self.add_unitary_batched_right(site,
-                                                   self.right_envs_batched,
-                                                   self.mps, samples,
-                                                   self.one_body_gates,
-                                                   self.two_body_gates)
-                    for site in reversed(range(1, len(self.mps)))
-                ]
-            if ref_mps != None:
-                [
-                    self.add_unitary_right(site,
-                                           self.right_envs,
-                                           self.mps,
-                                           ref_mps,
-                                           self.one_body_gates,
-                                           self.two_body_gates,
-                                           normalize=normalize)
-                    for site in reversed(range(1, len(self.mps)))
-                ]
-            for site in range(0, len(self.mps) - 1):
+            for site in range(0, len(self.mps) - 2):
                 if site in sites:
                     env = self.two_body_gates[(site, site + 1)] * alpha_gates
                     if samples != None:
@@ -2313,7 +2393,7 @@ class OverlapMaximizer:
                         convs_2[site] = conv_2
                         overlap_2_old = overlap_2
 
-                if verbose > 0 and site > 0:
+                if verbose > 0:
                     if (ref_mps != None) and (samples != None):
                         stdout.write(
                             "\r  overlap_samples = %.6E + %.6E i, overlap_ref_mps %.6E + %.6fE i, conv_1=%.6E, "
@@ -2337,6 +2417,88 @@ class OverlapMaximizer:
                 if verbose > 1:
                     print()
 
+            for site in reversed(range(1, len(self.mps) - 1):
+                if site in sites:
+                    env = self.two_body_gates[(site, site + 1)] * alpha_gates
+                    if samples != None:
+                        tmp = self.get_two_body_env_batched(
+                            (site, site + 1), self.left_envs_batched,
+                            self.right_envs_batched, self.one_body_gates,
+                            self.mps, samples)
+                        env += (alpha_samples * tf.math.reduce_mean(tmp, axis=0)
+                               )  #/np.sqrt(samples.shape[0]))
+                    if ref_mps != None:
+                        env += alpha_ref_mps * self.get_two_body_env(
+                            (site, site + 1), self.left_envs, self.right_envs,
+                            self.one_body_gates, self.mps, ref_mps)
+                    self.two_body_gates[(
+                        site, site + 1)] = self.two_body_update_svd_numpy(env)
+                if site > 0:
+                    if samples != None:
+                        self.add_unitary_batched_right(site,
+                                                       self.left_envs_batched,
+                                                       self.mps, samples,
+                                                       self.one_body_gates,
+                                                       self.two_body_gates)
+                    if ref_mps != None:
+                        self.add_unitary_right(site,
+                                               self.left_envs,
+                                               self.mps,
+                                               ref_mps,
+                                               self.one_body_gates,
+                                               self.two_body_gates,
+                                               normalize=normalize)
+
+                if samples != None:
+                    overlap_1 = self.overlap_batched(site,
+                                                     self.left_envs_batched,
+                                                     self.right_envs_batched,
+                                                     self.one_body_gates,
+                                                     self.mps, samples)
+                    if site <= min(sites):
+                        overlap_1_old = overlap_1
+                    else:
+                        conv_1 = np.abs(overlap_1 - overlap_1_old)
+                        convs_1[site] = conv_1
+                        overlap_1_old = overlap_1
+
+                if ref_mps != None:
+                    overlap_2 = self.overlap(site, self.left_envs,
+                                             self.right_envs,
+                                             self.one_body_gates, self.mps,
+                                             ref_mps)
+                    if site <= min(sites):
+                        overlap_2_old = overlap_2
+                    else:
+                        conv_2 = np.abs(overlap_2 - overlap_2_old)
+                        convs_2[site] = conv_2
+                        overlap_2_old = overlap_2
+
+                if verbose > 0:
+                    if (ref_mps != None) and (samples != None):
+                        stdout.write(
+                            "\r  overlap_samples = %.6E + %.6E i, overlap_ref_mps %.6E + %.6fE i, conv_1=%.6E, "
+                            "conv_2=%.6E, iteration  %i/%i at site %i ,"
+                            % (np.real(overlap_1), np.imag(overlap_1),
+                               np.real(overlap_2), np.imag(overlap_2),
+                               convs_1[site], convs_2[site], it, num_sweeps,
+                               site))
+                    elif (ref_mps == None) and (samples != None):
+                        stdout.write(
+                            "\r overlap_samples = %.6E + %.6E i, conv_1=%.6E,iteration  %i/%i at site %i"
+                            % (np.real(overlap_1), np.imag(overlap_1),
+                               convs_1[site], it, num_sweeps, site))
+                    if (ref_mps != None) and (samples == None):
+                        stdout.write(
+                            "\r overlap_ref_mps = %.6f + %.6f i conv_2=%.6E, iteration  %i/%i at site %i"
+                            % (np.real(overlap_2), np.abs(np.imag(overlap_2)),
+                               convs_2[site], it, num_sweeps, site))
+                    stdout.flush()
+
+                if verbose > 1:
+                    print()
+
+                    
         if (ref_mps != None) and (samples != None):
             return np.max(convs_1), np.max(convs_2)
         elif (ref_mps == None) and (samples == None):
