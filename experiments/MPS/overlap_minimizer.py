@@ -3130,14 +3130,14 @@ class MPOOneBodyStoquastisizer:
     conj_mps = net.add_node(net.backend.conj(reference_mps.get_tensor(site)))
     conj_gate = net.add_node(net.backend.conj(self.gates[site]))
     if site == 0:
-      L = net.add_node(net.backend.ones(1, 1, 1))
+      L = net.add_node(net.backend.ones((1, 1, 1)))
       self.left_envs[site] = L.tensor
-    else:
-      L = net.add_node(self.left_envs[site - 1])
 
+    L = net.add_node(self.left_envs[site])
     L[0] ^ mps[0]
     L[1] ^ conj_mps[0]
-    L[2] ^ mpo[0] 
+    L[2] ^ mpo[0]
+    
     gate[1] ^ mps[1]
     gate[0] ^ mpo[3]
 
@@ -3145,6 +3145,7 @@ class MPOOneBodyStoquastisizer:
     conj_gate[0] ^ mpo[2]
     output_order = [mps[2], conj_mps[2], mpo[1]]
     out = L @ mps @ gate @ mpo @ conj_gate @ conj_mps
+    out.reorder_edges(output_order)
     self.left_envs[site + 1] = out.tensor
 
 
@@ -3156,8 +3157,10 @@ class MPOOneBodyStoquastisizer:
     conj_mps = net.add_node(net.backend.conj(reference_mps.get_tensor(site)))
     conj_gate = net.add_node(net.backend.conj(self.gates[site]))
     if site == len(self.mpo) - 1:
-      R = net.add_node(net.backend.ones(1, 1, 1))
-      self.right_envs[len(self.mpo) - 1] = R.tensor
+      R = net.add_node(net.backend.ones((1, 1, 1)))
+      self.right_envs[site] = R.tensor
+
+    R = net.add_node(self.right_envs[site])      
 
     R[0] ^ mps[2]
     R[1] ^ conj_mps[2]
@@ -3169,6 +3172,7 @@ class MPOOneBodyStoquastisizer:
     
     output_order = [mps[0], conj_mps[0], mpo[0]]
     out = R @ mps @ gate @ mpo @ conj_gate @ conj_mps
+    out.reorder_edges(output_order)
     self.right_envs[site - 1] = out.tensor
 
   def compute_left_envs(self, reference_mps):
