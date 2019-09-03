@@ -706,7 +706,7 @@ class OverlapMaximizer:
             which (str):   the type to which gates should be reset
                            `which` can take values in {'eye','e', 'identities', 'i'} for identity operators
                            or in ('h','haar') for Haar random unitaries
-            dtype (tf.Dtype):       data type
+            dtype (tf.Dtype): data type
             noise (float): nose parameter; if nonzero, add noise to the identities
         Returns:
             dict:          maps (s,s+1) to gate for s even
@@ -715,10 +715,12 @@ class OverlapMaximizer:
         """
 
     if which in ('e', 'eye', 'h', 'haar', 'i', 'identities'):
-      self.one_body_gates = initialize_one_body_gates(
+      ds = [self.mpo.get_tensor(site).shape[2]
+            for site in range(len(self.mpo))]      
+      self.gates = initialize_one_body_gates(
           self.mps.d, self.mps.dtype, which, noise=noise)
     else:
-      raise ValueError()
+      raise ValueError('wrong value {} for argument `which`'.format(which))
 
   @staticmethod
   def add_unitary_batched_right(site, right_envs, mps, samples, one_body_gates,
@@ -3031,7 +3033,7 @@ class OverlapMaximizer:
         raise ValueError('unknown value {} for opt_type'.format(opt_type))
 
 
-class MPOOneBodyStoquastisizer:
+class OneBodyStoquastisizer:
 
   def __init__(self, mpo, one_body_gates = None,
                name='MPOOneBodystoquastisizer', backend='tensorflow'):
@@ -3183,11 +3185,13 @@ class MPOOneBodyStoquastisizer:
     for site in reversed(range(len(self.mpo))):
       self.add_unitary_right(site, reference_mps)
       
-  def get_environment(self, site):
+  def get_environment(self, site, reference_mps):
     net = tn.TensorNetwork(backend = self.backend)
     L = net.add_node(self.left_envs[site])
     R = net.add_node(self.right_envs[site])
     mpo = net.add_node(self.mpo[site])
+    mps = net.add_node(reference_mps.get_tensor(site))
+    conj_mps = net.add_node(net.backend.conj(reference_mps.get_tensor(site)))
     conj_gate = net.add_node(net.backend.conj(self.gates[site]))
 
     L[0] ^ mps[0]
@@ -3201,8 +3205,65 @@ class MPOOneBodyStoquastisizer:
                
     conj_gate[1] ^ conj_mps[1]
     conj_gate[0] ^ mpo[2]
-
+    output_order = [mpo[3], mps[1]]
     out = L @ conj_mps @ conj_gate @ mpo @ R @ mps
+    out.reorder_edges(output_order)    
     return out.tensor
-  def stochastisize(self, one_body_gates, reference_mps):
-    pass
+
+  @staticmethod
+  def one_body_update_svd_numpy(env):
+    """
+        obtain the update to the disentangler using numpy svd
+        Fixme: this currently only works with numpy arrays
+        Args:
+            wIn (np.ndarray or Tensor):  unitary tensor of rank 4
+        Returns:
+            The svd update of `wIn`
+        """
+    ut, st, vt = np.linalg.svd(env, full_matrices=False)
+    return misc_mps.ncon([np.conj(ut), np.conj(vt)], [[-1, 1], [1, -2]])
+
+  def reset_one_body_gates(self, which='eye', dtype=None, noise=0.0):
+    """
+        reset the one-body gates
+        Args:
+            which (str):   the type to which gates should be reset
+                           `which` can take values in {'eye','e', 'identities', 'i'} for identity operators
+                           or in ('h','haar') for Haar random unitaries
+            dtype (tf.Dtype):       data type
+            noise (float): nose parameter; if nonzero, add noise to the identities
+        Returns:
+            dict:          maps (s,s+1) to gate for s even
+        Raises:
+            ValueError
+        """
+
+    if which in ('e', 'eye', 'h', 'haar', 'i', 'identities'):
+      ds = [self.mpo.get_tensor(site).shape[2]for site in range(len(self.mpo))]      
+      self.gates = initialize_one_body_gates(
+        ds, self.mpo.dtype, which, noise=noise)
+    else:
+      raise ValueError('wrong value {} for argument `which`'.format(which))      
+  
+  def stoquastisize(self, reference_mps):
+    self.compute_right_envs(reference_mps)
+    self.add_unitary_left(0, reference_mps)#needed for initialization of left_envs[0]
+    
+    for site in range(len(self.mpo)):
+      env = self.get_environment(site, reference_mps)
+      cost = misc_mps.ncon([env,self.gates[site]],[[1, 2], [1, 2]])
+      self.gates[site] = self.one_body_update_svd_numpy(env)
+      self.add_unitary_left(site, reference_mps)
+      stdout.write("\r cost: %.6E" % (cost))
+      stdout.flush()
+      
+    for site in reversed(range(len(self.mpo))):
+      env = self.get_environment(site, reference_mps)
+      cost = misc_mps.ncon([env,self.gates[site]],[[1, 2], [1, 2]])      
+      self.gates[site] = self.one_body_update_svd_numpy(env)
+      self.add_unitary_right(site, reference_mps)
+      stdout.write("\r cost: %.6E" % (cost))
+      stdout.flush()
+      
+      
+      
