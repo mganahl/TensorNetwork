@@ -19,16 +19,20 @@ from __future__ import print_function
 import functools
 import operator
 from tensornetwork.backends import base_backend
-from typing import Optional, Sequence, Tuple, List, Any
+from typing import Optional, Sequence, Tuple, List, Any, Union, Type
+import numpy as np
 
 
 class ShellTensor:
-  def __init__(self, shape: Tuple):
-    self.shape = shape
 
-  def reshape(self, new_shape: Tuple):
+  def __init__(self, shape: Tuple[int, ...], dtype=None):
+    self.shape = shape
+    self.dtype = dtype
+
+  def reshape(self, new_shape: Tuple[int, ...]):
     self.shape = new_shape
     return self
+
 
 Tensor = ShellTensor
 
@@ -36,9 +40,10 @@ Tensor = ShellTensor
 class ShellBackend(base_backend.BaseBackend):
   """See base_backend.BaseBackend for documentation."""
 
-  def __init__(self):
+  def __init__(self, dtype: Optional[Type[np.number]] = None):
     super(ShellBackend, self).__init__()
     self.name = "shell"
+    self.dtype = dtype
 
   def tensordot(self, a: Tensor, b: Tensor,
                 axes: Sequence[Sequence[int]]) -> Tensor:
@@ -72,8 +77,9 @@ class ShellBackend(base_backend.BaseBackend):
                                 "calculated without explicit tensor values.")
     left_dims = tensor.shape[:split_axis]
     right_dims = tensor.shape[split_axis:]
-    dim_s0 = min(functools.reduce(operator.mul, left_dims),
-                 functools.reduce(operator.mul, right_dims))
+    dim_s0 = min(
+        functools.reduce(operator.mul, left_dims),
+        functools.reduce(operator.mul, right_dims))
     if max_singular_values is not None:
       dim_s = min(dim_s0, max_singular_values)
     else:
@@ -84,6 +90,26 @@ class ShellBackend(base_backend.BaseBackend):
     s = ShellTensor((dim_s,))
     s_rest = ShellTensor((dim_s0 - dim_s,))
     return u, s, vh, s_rest
+
+  def qr_decomposition(self, tensor: Tensor,
+                       split_axis: int) -> Tuple[Tensor, Tensor]:
+
+    left_dims = tensor.shape[:split_axis]
+    right_dims = tensor.shape[split_axis:]
+    center_dim = min(tensor.shape)
+    q = ShellTensor(left_dims + (center_dim,))
+    r = ShellTensor((center_dim,) + right_dims)
+    return q, r
+
+  def rq_decomposition(self, tensor: Tensor,
+                       split_axis: int) -> Tuple[Tensor, Tensor]:
+
+    left_dims = tensor.shape[:split_axis]
+    right_dims = tensor.shape[split_axis:]
+    center_dim = min(tensor.shape)
+    q = ShellTensor(left_dims + (center_dim,))
+    r = ShellTensor((center_dim,) + right_dims)
+    return q, r
 
   def concat(self, values: Sequence[Tensor], axis: int) -> Tensor:
     shape = values[0].shape
@@ -156,3 +182,33 @@ class ShellBackend(base_backend.BaseBackend):
         return tensors[i].shape[ind]
     raise ValueError("Einsum output expression contains letters not given"
                      "in input.")
+
+  def norm(self, tensor: Tensor) -> Tensor:
+    return ShellTensor(())
+
+  def eye(self,
+          N: int,
+          dtype: Optional[Type[np.number]] = None,
+          M: Optional[int] = None) -> Tensor:
+    if not M:
+      M = N
+    return ShellTensor((N, M))
+
+  def ones(self,
+           shape: Tuple[int, ...],
+           dtype: Optional[Type[np.number]] = None) -> Tensor:
+    return ShellTensor(shape)
+
+  def zeros(self,
+            shape: Tuple[int, ...],
+            dtype: Optional[Type[np.number]] = None) -> Tensor:
+
+    return ShellTensor(shape)
+
+  def randn(self,
+            shape: Tuple[int, ...],
+            dtype: Optional[Type[np.number]] = None) -> Tensor:
+    return ShellTensor(shape)
+
+  def conj(self, tensor: Tensor) -> Tensor:
+    return tensor
