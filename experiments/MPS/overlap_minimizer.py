@@ -3067,8 +3067,18 @@ class OneBodyStoquastisizer:
         2,3 are the physical outgoing and incoming indices, respectively. The conjugated 
         side of the MPS is on the bottom (at index 2)
 
+        MPS index convention:
+              ___
+             |   |
+         0---     ---2
+             |___|
+               |
+               1
+
+
 
         MPO index convention:
+
                3
               _|_
              |   |
@@ -3243,27 +3253,43 @@ class OneBodyStoquastisizer:
       self.gates = initialize_one_body_gates(
         ds, self.mpo.dtype, which, noise=noise)
     else:
-      raise ValueError('wrong value {} for argument `which`'.format(which))      
-  
-  def stoquastisize(self, reference_mps):
+      raise ValueError('wrong value {} for argument `which`'.format(which))
+    
+  def absorb_gates(self):
+    final_mpo = copy.deepcopy(self.mpo)
+    for site in range(len(self.mpo)):
+      net = tn.TensorNetwork(backend=self.backend)
+      mpo = net.add_node(self.mpo[site])
+      gate = net.add_node(self.gates[site])
+      conj_gate = net.add_node(net.backend.conj(self.gates[site]))
+      mpo[2] ^ conj_gate[0]
+      mpo[3] ^ gate[0]
+      output_order = [mpo[0], mpo[1], conj_gate[1], gate[1]]
+      out = mpo @ gate @ conj_gate
+      out.reorder_edges(output_order)
+      final_mpo._tensors[site]= out.tensor
+    return final_mpo
+      
+  def stoquastisize(self, reference_mps, num_steps):
     self.compute_right_envs(reference_mps)
     self.add_unitary_left(0, reference_mps)#needed for initialization of left_envs[0]
+    for step in range(num_steps):
     
-    for site in range(len(self.mpo)):
-      env = self.get_environment(site, reference_mps)
-      cost = misc_mps.ncon([env,self.gates[site]],[[1, 2], [1, 2]])
-      self.gates[site] = self.one_body_update_svd_numpy(env)
-      self.add_unitary_left(site, reference_mps)
-      stdout.write("\r cost: %.6E" % (cost))
-      stdout.flush()
-      
-    for site in reversed(range(len(self.mpo))):
-      env = self.get_environment(site, reference_mps)
-      cost = misc_mps.ncon([env,self.gates[site]],[[1, 2], [1, 2]])      
-      self.gates[site] = self.one_body_update_svd_numpy(env)
-      self.add_unitary_right(site, reference_mps)
-      stdout.write("\r cost: %.6E" % (cost))
-      stdout.flush()
-      
+      for site in range(len(self.mpo)):
+        env = self.get_environment(site, reference_mps)
+        cost = misc_mps.ncon([env,self.gates[site]],[[1, 2], [1, 2]])
+        self.gates[site] = self.one_body_update_svd_numpy(env)
+        self.add_unitary_left(site, reference_mps)
+        stdout.write("\r step %i/%i cost: %.6E" % (step + 1, num_steps, cost))        
+        stdout.flush()
+        
+      for site in reversed(range(len(self.mpo))):
+        env = self.get_environment(site, reference_mps)
+        cost = misc_mps.ncon([env,self.gates[site]],[[1, 2], [1, 2]])      
+        self.gates[site] = self.one_body_update_svd_numpy(env)
+        self.add_unitary_right(site, reference_mps)
+        stdout.write("\r step %i/%i cost: %.6E" % (step + 1, num_steps, cost))
+        stdout.flush()
+        
       
       
