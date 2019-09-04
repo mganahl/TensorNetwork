@@ -3134,7 +3134,7 @@ class OneBodyStoquastisizer:
     else:
       self.gates = one_body_gates
 
-  def add_unitary_left(self, site, reference_mps, normalize=True):
+  def add_unitary_left(self, site, reference_mps, normalize=False):
     net = tn.TensorNetwork(backend=self.backend)
     gate = net.add_node(self.gates[site])
     mps = net.add_node(reference_mps.get_tensor(site))
@@ -3164,7 +3164,7 @@ class OneBodyStoquastisizer:
     self.left_envs[site + 1] = out.tensor
 
 
-  def add_unitary_right(self, site, reference_mps, normalize=True):
+  def add_unitary_right(self, site, reference_mps, normalize=False):
     net = tn.TensorNetwork(backend=self.backend)
     gate = net.add_node(self.gates[site])
     mps = net.add_node(reference_mps.get_tensor(site))
