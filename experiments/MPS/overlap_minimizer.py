@@ -3134,7 +3134,7 @@ class OneBodyStoquastisizer:
     else:
       self.gates = one_body_gates
 
-  def add_unitary_left(self, site, reference_mps):
+  def add_unitary_left(self, site, reference_mps, normalize=True):
     net = tn.TensorNetwork(backend=self.backend)
     gate = net.add_node(self.gates[site])
     mps = net.add_node(reference_mps.get_tensor(site))
@@ -3157,11 +3157,14 @@ class OneBodyStoquastisizer:
     conj_gate[0] ^ mpo[2]
     output_order = [mps[2], conj_mps[2], mpo[1]]
     out = L @ mps @ gate @ mpo @ conj_gate @ conj_mps
+    
     out.reorder_edges(output_order)
+    if normalize:
+      out.tensor /= tf.linalg.norm(out.tensor)
     self.left_envs[site + 1] = out.tensor
 
 
-  def add_unitary_right(self, site, reference_mps):
+  def add_unitary_right(self, site, reference_mps, normalize=True):
     net = tn.TensorNetwork(backend=self.backend)
     gate = net.add_node(self.gates[site])
     mps = net.add_node(reference_mps.get_tensor(site))
@@ -3184,7 +3187,10 @@ class OneBodyStoquastisizer:
     
     output_order = [mps[0], conj_mps[0], mpo[0]]
     out = R @ mps @ gate @ mpo @ conj_gate @ conj_mps
+    
     out.reorder_edges(output_order)
+    if normalize:
+      out.tensor /= tf.linalg.norm(out.tensor)
     self.right_envs[site - 1] = out.tensor
 
   def compute_left_envs(self, reference_mps):
@@ -3231,7 +3237,7 @@ class OneBodyStoquastisizer:
             The svd update of `wIn`
         """
     ut, st, vt = np.linalg.svd(env, full_matrices=False)
-    return misc_mps.ncon([np.conj(ut), np.conj(vt)], [[-1, 1], [1, -2]])
+    return -misc_mps.ncon([np.conj(ut), np.conj(vt)], [[-1, 1], [1, -2]])
 
   def reset_one_body_gates(self, which='eye', dtype=None, noise=0.0):
     """
@@ -3278,6 +3284,8 @@ class OneBodyStoquastisizer:
       for site in range(len(self.mpo)):
         env = self.get_environment(site, reference_mps)
         cost = misc_mps.ncon([env,self.gates[site]],[[1, 2], [1, 2]])
+        if cost > 0:
+          return False
         self.gates[site] = self.one_body_update_svd_numpy(env)
         self.add_unitary_left(site, reference_mps)
         stdout.write("\r step %i/%i cost: %.6E" % (step + 1, num_steps, cost))        
@@ -3285,7 +3293,9 @@ class OneBodyStoquastisizer:
         
       for site in reversed(range(len(self.mpo))):
         env = self.get_environment(site, reference_mps)
-        cost = misc_mps.ncon([env,self.gates[site]],[[1, 2], [1, 2]])      
+        cost = misc_mps.ncon([env,self.gates[site]],[[1, 2], [1, 2]])
+        if cost > 0:
+          return False
         self.gates[site] = self.one_body_update_svd_numpy(env)
         self.add_unitary_right(site, reference_mps)
         stdout.write("\r step %i/%i cost: %.6E" % (step + 1, num_steps, cost))
