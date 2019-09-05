@@ -25,59 +25,6 @@ plt.ion()
 
 
 
-def generate_basis(N):
-    l = [[0,1] for _ in range(N)]
-    l = list(itertools.product(*l))
-    return np.stack([list(k) for k in l])
-
-
-def generate_probability_mps(mps):
-    ds = mps.d
-    Ds = mps.D
-    tensors=[]
-    for site in range(len(mps)):
-        copy_tensor = np.zeros((ds[site], ds[site], ds[site]), dtype=mps.dtype.as_numpy_dtype)
-        for n in range(ds[site]):
-            copy_tensor[n,n,n] = 1.0
-            tensor = misc_mps.ncon([mps.get_tensor(site), tf.conj(mps.get_tensor(site)),copy_tensor],
-                                                               [[-1, 1, -4],[-2, 2, -5],[1,2,-3]])
-            tmp=tf.reshape(tensor, (Ds[site]**2, ds[site], Ds[site+1]**2))
-        tensors.append(tmp)
-    return MPS.FiniteMPSCentralGauge(tensors)
-
-def absorb_two_body_gates(mps, two_body_gates, Dmax=None):
-    mps_out = copy.deepcopy(mps)
-    for site in range(0,len(mps_out)-1,2):
-        mps_out.apply_2site(two_body_gates[(site, site + 1)], site)
-    for site in range(1,len(mps)-2,2):
-        mps_out.apply_2site(two_body_gates[(site, site + 1)], site)
-    mps_out.position(0)
-    mps_out.position(len(mps_out), normalize=True)
-    tw = mps_out.position(0, normalize=True, D=Dmax)
-    return mps_out, tw
- 
-def absorb_one_body_gates(mps, one_body_gates):
-    tensors = [misc_mps.ncon([mps.get_tensor(site), one_body_gates[site]],[[-1,1,-3], [-2, 1]]) 
-               for site in range(len(mps))]
-    mps_out = MPS.FiniteMPSCentralGauge(tensors)
-    return mps_out   
- 
-
-
-
-def apply_random_positive_gates(mps):
-    for site in range(0,len(mps)-1,2):
-        mps.apply_2site(tf.random_uniform(shape=[mps.d[site], mps.d[site+1],mps.d[site], mps.d[site+1]], 
-                                          dtype = mps.dtype), site)
-    for site in range(1,len(mps)-2,2):
-        mps.apply_2site(tf.random_uniform(shape=[mps.d[site], mps.d[site+1],mps.d[site], mps.d[site+1]], 
-                                          dtype = mps.dtype), site)
-    mps.position(0)
-    mps.position(len(mps))
-    mps.position(0)
-    return mps
-
-
 def convert_to_tf(tensors):
     """
     permutes the indices of the tensors from PyTeN ordering to TensorNetwork ordering
