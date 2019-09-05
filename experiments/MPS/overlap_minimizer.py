@@ -30,6 +30,28 @@ import experiments.MPS.matrixproductstates as MPS
 import functools as fct
 from experiments.MPS.matrixproductstates import InfiniteMPSCentralGauge, FiniteMPSCentralGauge
 
+def block_MPO(mpo, block_length):
+  if block_length == 1:
+    return mpo
+  assert len(mpo) % block_length ==  0
+  tensors = []
+  for n in range(0, len(mpo), block_length):
+      net = tn.TensorNetwork()
+      nodes = [net.add_node(mpo[n + b]) for b in range(block_length)]
+      for n in range(len(nodes) - 1):
+          nodes[n][1] ^ nodes[n+1][0]
+      bottom_edges = [n[2] for n in nodes]
+      top_edges = [n[3] for n in nodes]
+      out_edges = [nodes[0][0]] + [nodes[-1][1]] + bottom_edges + top_edges
+      node = nodes[0]
+      for n in range(1, len(nodes)):
+          node = node @ nodes[n]
+      node.reorder_edges(out_edges)
+      M1, M2 = node.shape[0], node.shape[1] 
+      
+      tensors.append(tf.reshape(node.tensor, (M1, M2, 2**block_length, 2**block_length)))
+  return MPO.FiniteMPO(tensors) 
+
 
 def generate_probability_mps(mps):
   ds = mps.d
@@ -69,6 +91,22 @@ def absorb_one_body_gates(mps, one_body_gates):
   mps_out = MPS.FiniteMPSCentralGauge(tensors)
   return mps_out
 
+def generate_basis(N):
+    l = [[0,1] for _ in range(N)]
+    l = list(itertools.product(*l))
+    return np.stack([list(k) for k in l])
+
+def apply_random_positive_gates(mps):
+    for site in range(0,len(mps)-1,2):
+        mps.apply_2site(tf.random_uniform(shape=[mps.d[site], mps.d[site+1],mps.d[site], mps.d[site+1]], 
+                                          dtype = mps.dtype), site)
+    for site in range(1,len(mps)-2,2):
+        mps.apply_2site(tf.random_uniform(shape=[mps.d[site], mps.d[site+1],mps.d[site], mps.d[site+1]], 
+                                          dtype = mps.dtype), site)
+    mps.position(0)
+    mps.position(len(mps))
+    mps.position(0)
+    return mps
 
 def get_gate_from_generator(g, shape):
   """
@@ -3635,8 +3673,8 @@ class TwoBodyStoquastisizer:
       for site in range(0, len(self.mpo) - 1):
         env = self.get_environment((site, site + 1))
         cost = misc_mps.ncon([env,self.gates[(site, site + 1)]],[[1, 2, 3, 4], [1, 2, 3, 4]])
-        # if tf.real(cost) > 0:
-        #   return False
+        if tf.real(cost) > 0:
+          return False
         self.gates[(site, site + 1)] = self.update_svd_numpy(env)
         self.add_unitary_left((site, site + 1), reference_mps)
         stdout.write("\r step %i/%i cost: %.6E" % (step + 1, num_steps, cost))        
@@ -3645,9 +3683,10 @@ class TwoBodyStoquastisizer:
       for site in reversed(range(0, len(self.mpo)-1)):
         env = self.get_environment((site, site + 1))
         cost = misc_mps.ncon([env,self.gates[(site, site + 1)]],[[1, 2, 3, 4], [1, 2, 3, 4]])        
-        # if tf.real(cost) > 0:
-        #   return False
+        if tf.real(cost) > 0:
+          return False
         self.gates[(site, site + 1)] = self.update_svd_numpy(env)
         self.add_unitary_right((site, site + 1), reference_mps)
         stdout.write("\r step %i/%i cost: %.6E" % (step + 1, num_steps, cost))
         stdout.flush()
+    return True
