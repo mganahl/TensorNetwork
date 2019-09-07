@@ -24,33 +24,35 @@ import numpy as np
 import tensorflow as tf
 import experiments.MPS_classifier.batchtensornetwork as btn
 import experiments.MPS.misc_mps as misc_mps
-import experiments.MPS.matrixproductoperators  as MPO
+import experiments.MPS.matrixproductoperators as MPO
 from sys import stdout
 import experiments.MPS.matrixproductstates as MPS
 import functools as fct
 from experiments.MPS.matrixproductstates import InfiniteMPSCentralGauge, FiniteMPSCentralGauge
 
+
 def block_MPO(mpo, block_length):
   if block_length == 1:
     return mpo
-  assert len(mpo) % block_length ==  0
+  assert len(mpo) % block_length == 0
   tensors = []
   for n in range(0, len(mpo), block_length):
-      net = tn.TensorNetwork()
-      nodes = [net.add_node(mpo[n + b]) for b in range(block_length)]
-      for n in range(len(nodes) - 1):
-          nodes[n][1] ^ nodes[n+1][0]
-      bottom_edges = [n[2] for n in nodes]
-      top_edges = [n[3] for n in nodes]
-      out_edges = [nodes[0][0]] + [nodes[-1][1]] + bottom_edges + top_edges
-      node = nodes[0]
-      for n in range(1, len(nodes)):
-          node = node @ nodes[n]
-      node.reorder_edges(out_edges)
-      M1, M2 = node.shape[0], node.shape[1] 
-      
-      tensors.append(tf.reshape(node.tensor, (M1, M2, 2**block_length, 2**block_length)))
-  return MPO.FiniteMPO(tensors) 
+    net = tn.TensorNetwork()
+    nodes = [net.add_node(mpo[n + b]) for b in range(block_length)]
+    for n in range(len(nodes) - 1):
+      nodes[n][1] ^ nodes[n + 1][0]
+    bottom_edges = [n[2] for n in nodes]
+    top_edges = [n[3] for n in nodes]
+    out_edges = [nodes[0][0]] + [nodes[-1][1]] + bottom_edges + top_edges
+    node = nodes[0]
+    for n in range(1, len(nodes)):
+      node = node @ nodes[n]
+    node.reorder_edges(out_edges)
+    M1, M2 = node.shape[0], node.shape[1]
+
+    tensors.append(
+        tf.reshape(node.tensor, (M1, M2, 2**block_length, 2**block_length)))
+  return MPO.FiniteMPO(tensors)
 
 
 def generate_probability_mps(mps):
@@ -91,22 +93,29 @@ def absorb_one_body_gates(mps, one_body_gates):
   mps_out = MPS.FiniteMPSCentralGauge(tensors)
   return mps_out
 
+
 def generate_basis(N):
-    l = [[0,1] for _ in range(N)]
-    l = list(itertools.product(*l))
-    return np.stack([list(k) for k in l])
+  l = [[0, 1] for _ in range(N)]
+  l = list(itertools.product(*l))
+  return np.stack([list(k) for k in l])
+
 
 def apply_random_positive_gates(mps):
-    for site in range(0,len(mps)-1,2):
-        mps.apply_2site(tf.random_uniform(shape=[mps.d[site], mps.d[site+1],mps.d[site], mps.d[site+1]], 
-                                          dtype = mps.dtype), site)
-    for site in range(1,len(mps)-2,2):
-        mps.apply_2site(tf.random_uniform(shape=[mps.d[site], mps.d[site+1],mps.d[site], mps.d[site+1]], 
-                                          dtype = mps.dtype), site)
-    mps.position(0)
-    mps.position(len(mps))
-    mps.position(0)
-    return mps
+  for site in range(0, len(mps) - 1, 2):
+    mps.apply_2site(
+        tf.random_uniform(
+            shape=[mps.d[site], mps.d[site + 1], mps.d[site], mps.d[site + 1]],
+            dtype=mps.dtype), site)
+  for site in range(1, len(mps) - 2, 2):
+    mps.apply_2site(
+        tf.random_uniform(
+            shape=[mps.d[site], mps.d[site + 1], mps.d[site], mps.d[site + 1]],
+            dtype=mps.dtype), site)
+  mps.position(0)
+  mps.position(len(mps))
+  mps.position(0)
+  return mps
+
 
 def get_gate_from_generator(g, shape):
   """
@@ -754,8 +763,7 @@ class OverlapMaximizer:
         """
 
     if which in ('e', 'eye', 'h', 'haar', 'i', 'identities'):
-      ds = [self.mpo.get_tensor(site).shape[2]
-            for site in range(len(self.mpo))]      
+      ds = [self.mpo.get_tensor(site).shape[2] for site in range(len(self.mpo))]
       self.gates = initialize_one_body_gates(
           self.mps.d, self.mps.dtype, which, noise=noise)
     else:
@@ -3074,8 +3082,11 @@ class OverlapMaximizer:
 
 class OneBodyStoquastisizer:
 
-  def __init__(self, mpo, one_body_gates = None,
-               name='OneBodyStoquastisizer', backend='tensorflow'):
+  def __init__(self,
+               mpo,
+               one_body_gates=None,
+               name='OneBodyStoquastisizer',
+               backend='tensorflow'):
     """
         uses a unitary circuit with three layers:
         the layer contains `N` one-body unitaries
@@ -3162,11 +3173,11 @@ class OneBodyStoquastisizer:
     self.right_envs = {}
     self.left_envs = {}
     self.backend = backend
-    
+
     if (one_body_gates == None) or (len(one_body_gates) == 0):
-      ds = [self.mpo.get_tensor(site).shape[2]for site in range(len(mpo))]
+      ds = [self.mpo.get_tensor(site).shape[2] for site in range(len(mpo))]
       self.gates = initialize_one_body_gates(
-        ds, self.mpo.dtype, which='e', noise=0.0)
+          ds, self.mpo.dtype, which='e', noise=0.0)
     else:
       self.gates = one_body_gates
 
@@ -3185,7 +3196,7 @@ class OneBodyStoquastisizer:
     L[0] ^ mps[0]
     L[1] ^ conj_mps[0]
     L[2] ^ mpo[0]
-    
+
     gate[1] ^ mps[1]
     gate[0] ^ mpo[3]
 
@@ -3193,52 +3204,51 @@ class OneBodyStoquastisizer:
     conj_gate[0] ^ mpo[2]
     output_order = [mps[2], conj_mps[2], mpo[1]]
     out = L @ mps @ gate @ mpo @ conj_gate @ conj_mps
-    
+
     out.reorder_edges(output_order)
     if normalize:
       out.tensor /= tf.linalg.norm(out.tensor)
     self.left_envs[site + 1] = out.tensor
 
-
   def add_unitary_right(self, site, reference_mps, normalize=False):
     net = tn.TensorNetwork(backend=self.backend)
     gate = net.add_node(self.gates[site])
     mps = net.add_node(reference_mps.get_tensor(site))
-    mpo = net.add_node(self.mpo.get_tensor(site))    
+    mpo = net.add_node(self.mpo.get_tensor(site))
     conj_mps = net.add_node(net.backend.conj(reference_mps.get_tensor(site)))
     conj_gate = net.add_node(net.backend.conj(self.gates[site]))
     if site == len(self.mpo) - 1:
-      R = net.add_node(net.backend.ones((1, 1, 1), dtype = self.mpo.dtype))
+      R = net.add_node(net.backend.ones((1, 1, 1), dtype=self.mpo.dtype))
       self.right_envs[site] = R.tensor
 
-    R = net.add_node(self.right_envs[site])      
+    R = net.add_node(self.right_envs[site])
 
     R[0] ^ mps[2]
     R[1] ^ conj_mps[2]
-    R[2] ^ mpo[1] 
+    R[2] ^ mpo[1]
     gate[1] ^ mps[1]
     gate[0] ^ mpo[3]
     conj_gate[1] ^ conj_mps[1]
     conj_gate[0] ^ mpo[2]
-    
+
     output_order = [mps[0], conj_mps[0], mpo[0]]
     out = R @ mps @ gate @ mpo @ conj_gate @ conj_mps
-    
+
     out.reorder_edges(output_order)
     if normalize:
       out.tensor /= tf.linalg.norm(out.tensor)
     self.right_envs[site - 1] = out.tensor
 
-  def compute_left_envs(self, reference_mps):
+  def compute_left_envs(self, reference_mps, normalize=False):
     for site in range(len(self.mpo)):
-      self.add_unitary_left(site, reference_mps)
-      
-  def compute_right_envs(self, reference_mps):
+      self.add_unitary_left(site, reference_mps, normalize=normalize)
+
+  def compute_right_envs(self, reference_mps, normalize=False):
     for site in reversed(range(len(self.mpo))):
-      self.add_unitary_right(site, reference_mps)
-      
+      self.add_unitary_right(site, reference_mps, normalize=normalize)
+
   def get_environment(self, site, reference_mps):
-    net = tn.TensorNetwork(backend = self.backend)
+    net = tn.TensorNetwork(backend=self.backend)
     L = net.add_node(self.left_envs[site])
     R = net.add_node(self.right_envs[site])
     mpo = net.add_node(self.mpo[site])
@@ -3248,18 +3258,18 @@ class OneBodyStoquastisizer:
 
     L[0] ^ mps[0]
     R[0] ^ mps[2]
-    
+
     L[1] ^ conj_mps[0]
     R[1] ^ conj_mps[2]
 
     L[2] ^ mpo[0]
     R[2] ^ mpo[1]
-               
+
     conj_gate[1] ^ conj_mps[1]
     conj_gate[0] ^ mpo[2]
     output_order = [mpo[3], mps[1]]
     out = L @ conj_mps @ conj_gate @ mpo @ R @ mps
-    out.reorder_edges(output_order)    
+    out.reorder_edges(output_order)
     return out.tensor
 
   @staticmethod
@@ -3290,12 +3300,12 @@ class OneBodyStoquastisizer:
         """
 
     if which in ('e', 'eye', 'h', 'haar', 'i', 'identities'):
-      ds = [self.mpo.get_tensor(site).shape[2]for site in range(len(self.mpo))]      
+      ds = [self.mpo.get_tensor(site).shape[2] for site in range(len(self.mpo))]
       self.gates = initialize_one_body_gates(
-        ds, self.mpo.dtype, which, noise=noise)
+          ds, self.mpo.dtype, which, noise=noise)
     else:
       raise ValueError('wrong value {} for argument `which`'.format(which))
-    
+
   def absorb_gates(self):
     final_mpo = copy.deepcopy(self.mpo)
     for site in range(len(self.mpo)):
@@ -3308,40 +3318,44 @@ class OneBodyStoquastisizer:
       output_order = [mpo[0], mpo[1], conj_gate[1], gate[1]]
       out = mpo @ gate @ conj_gate
       out.reorder_edges(output_order)
-      final_mpo._tensors[site]= out.tensor
+      final_mpo._tensors[site] = out.tensor
     return final_mpo
-      
-  def stoquastisize(self, reference_mps, num_steps):
-    self.compute_right_envs(reference_mps)
-    self.add_unitary_left(0, reference_mps)#needed for initialization of left_envs[0]
+
+  def stoquastisize(self, reference_mps, num_steps, normalize=False):
+    self.compute_right_envs(reference_mps, normalize=normalize)
+    self.add_unitary_left(
+        0, reference_mps,
+        normalize=normalize)  #needed for initialization of left_envs[0]
     for step in range(num_steps):
-    
+
       for site in range(len(self.mpo)):
         env = self.get_environment(site, reference_mps)
-        cost = misc_mps.ncon([env,self.gates[site]],[[1, 2], [1, 2]])
+        cost = misc_mps.ncon([env, self.gates[site]], [[1, 2], [1, 2]])
         if tf.real(cost) > 0:
           return False
         self.gates[site] = self.update_svd_numpy(env)
-        self.add_unitary_left(site, reference_mps)
-        stdout.write("\r step %i/%i cost: %.6E" % (step + 1, num_steps, cost))        
-        stdout.flush()
-        
-      for site in reversed(range(len(self.mpo))):
-        env = self.get_environment(site, reference_mps)
-        cost = misc_mps.ncon([env,self.gates[site]],[[1, 2], [1, 2]])
-        if tf.real(cost) > 0:
-          return False
-        self.gates[site] = self.update_svd_numpy(env)
-        self.add_unitary_right(site, reference_mps)
+        self.add_unitary_left(site, reference_mps, normalize=normalize)
         stdout.write("\r step %i/%i cost: %.6E" % (step + 1, num_steps, cost))
         stdout.flush()
-        
-      
-      
+
+      for site in reversed(range(len(self.mpo))):
+        env = self.get_environment(site, reference_mps)
+        cost = misc_mps.ncon([env, self.gates[site]], [[1, 2], [1, 2]])
+        if tf.real(cost) > 0:
+          return False
+        self.gates[site] = self.update_svd_numpy(env)
+        self.add_unitary_right(site, reference_mps, normalize=normalize)
+        stdout.write("\r step %i/%i cost: %.6E" % (step + 1, num_steps, cost))
+        stdout.flush()
+
+
 class TwoBodyStoquastisizer:
 
-  def __init__(self, mpo, gates = None,
-               name='TwoBodyStoquastisizer', backend='tensorflow'):
+  def __init__(self,
+               mpo,
+               gates=None,
+               name='TwoBodyStoquastisizer',
+               backend='tensorflow'):
     """
         uses a unitary circuit with three layers:
         the first layer 1 contains `N/2` two-body unitaries on sites (site1, site2) with site1 even 
@@ -3431,20 +3445,21 @@ class TwoBodyStoquastisizer:
     self.backend = backend
     if (gates == None) or (len(gates) == 0):
       ds = [self.mpo.get_tensor(site).shape[2] for site in range(len(mpo))]
-      self.gates = initialize_even_two_body_gates(ds, self.mpo.dtype, which='e', noise=0.0)
-      self.gates.update(initialize_odd_two_body_gates(ds, self.mpo.dtype, which='e', noise=0.0))
+      self.gates = initialize_even_two_body_gates(
+          ds, self.mpo.dtype, which='e', noise=0.0)
+      self.gates.update(
+          initialize_odd_two_body_gates(
+              ds, self.mpo.dtype, which='e', noise=0.0))
     else:
       self.gates = gates
 
     if len(self.gates) != len(mpo) - 1:
       raise ValueError('len(gates) != len(mpo) - 1')
-    
-
 
   def add_unitary_left(self, sites, reference_mps, normalize=False):
     site = sites[0]
     if site == 0:
-      net = tn.TensorNetwork(backend=self.backend)      
+      net = tn.TensorNetwork(backend=self.backend)
       L = net.add_node(net.backend.ones((1, 1, 1), dtype=self.mpo.dtype))
       mps = net.add_node(reference_mps.get_tensor(site))
       mpo = net.add_node(self.mpo.get_tensor(site))
@@ -3452,98 +3467,116 @@ class TwoBodyStoquastisizer:
       L[0] ^ mps[0]
       L[1] ^ conj_mps[0]
       L[2] ^ mpo[0]
-      output_order = [mps[2], conj_mps[2], mps[1], conj_mps[1], mpo[2], mpo[3], mpo[1]]
+      output_order = [
+          mps[2], conj_mps[2], mps[1], conj_mps[1], mpo[2], mpo[3], mpo[1]
+      ]
       result = L @ mps @ mpo @ conj_mps
       result.reorder_edges(output_order)
       self.left_envs[(site, site + 1)] = result.tensor
-    
+
     net = tn.TensorNetwork(backend=self.backend)
     gate = net.add_node(self.gates[(site, site + 1)])
     mps = net.add_node(reference_mps.get_tensor(site + 1))
     mpo = net.add_node(self.mpo.get_tensor(site + 1))
-    conj_mps = net.add_node(net.backend.conj(reference_mps.get_tensor(site + 1)))
+    conj_mps = net.add_node(
+        net.backend.conj(reference_mps.get_tensor(site + 1)))
     conj_gate = net.add_node(net.backend.conj(self.gates[(site, site + 1)]))
-    
 
     L = net.add_node(self.left_envs[(site, site + 1)])
     L[0] ^ mps[0]
     L[1] ^ conj_mps[0]
     L[2] ^ gate[2]
     L[3] ^ conj_gate[2]
-    L[4] ^ conj_gate[0]    
+    L[4] ^ conj_gate[0]
     L[5] ^ gate[0]
-    L[6] ^ mpo[0]    
+    L[6] ^ mpo[0]
     if site % 2 == 1:
-      mps[1] ^ gate[3]      
+      mps[1] ^ gate[3]
       conj_mps[1] ^ conj_gate[3]
-      output_order = [mps[2], conj_mps[2], gate[1], conj_gate[1], mpo[2], mpo[3], mpo[1]]
+      output_order = [
+          mps[2], conj_mps[2], gate[1], conj_gate[1], mpo[2], mpo[3], mpo[1]
+      ]
       out = L @ mps @ gate @ conj_mps @ conj_gate @ mpo
     else:
       mpo[2] ^ conj_gate[1]
       mpo[3] ^ gate[1]
-      output_order = [mps[2], conj_mps[2], mps[1], conj_mps[1], conj_gate[3], gate[3], mpo[1]]
+      output_order = [
+          mps[2], conj_mps[2], mps[1], conj_mps[1], conj_gate[3], gate[3],
+          mpo[1]
+      ]
       out = L @ mpo @ gate @ conj_gate @ conj_mps @ mps
-      
+
     out.reorder_edges(output_order)
     self.left_envs[(site + 1, site + 2)] = out.tensor
-
 
   def add_unitary_right(self, sites, reference_mps, normalize=False):
     site = sites[1]
     if site == len(self.mpo) - 1:
-      net = tn.TensorNetwork(backend=self.backend)      
-      R = net.add_node(net.backend.ones((1, 1, 1), dtype=self.mpo.dtype)) 
-      
+      net = tn.TensorNetwork(backend=self.backend)
+      R = net.add_node(net.backend.ones((1, 1, 1), dtype=self.mpo.dtype))
+
       mps = net.add_node(reference_mps.get_tensor(site))
       mpo = net.add_node(self.mpo.get_tensor(site))
       conj_mps = net.add_node(net.backend.conj(reference_mps.get_tensor(site)))
       R[0] ^ mps[2]
       R[1] ^ conj_mps[2]
       R[2] ^ mpo[1]
-      output_order = [mps[0], conj_mps[0], mps[1], conj_mps[1], mpo[2], mpo[3], mpo[0]]
+      output_order = [
+          mps[0], conj_mps[0], mps[1], conj_mps[1], mpo[2], mpo[3], mpo[0]
+      ]
       result = R @ mps @ mpo @ conj_mps
       result.reorder_edges(output_order)
       self.right_envs[(site - 1, site)] = result.tensor
-    
+
     net = tn.TensorNetwork(backend=self.backend)
     gate = net.add_node(self.gates[(site - 1, site)])
     mps = net.add_node(reference_mps.get_tensor(site - 1))
     mpo = net.add_node(self.mpo.get_tensor(site - 1))
-    conj_mps = net.add_node(net.backend.conj(reference_mps.get_tensor(site - 1)))
+    conj_mps = net.add_node(
+        net.backend.conj(reference_mps.get_tensor(site - 1)))
     conj_gate = net.add_node(net.backend.conj(self.gates[(site - 1, site)]))
-    
 
     R = net.add_node(self.right_envs[(site - 1, site)])
     R[0] ^ mps[2]
     R[1] ^ conj_mps[2]
     R[2] ^ gate[3]
     R[3] ^ conj_gate[3]
-    R[4] ^ conj_gate[1]    
+    R[4] ^ conj_gate[1]
     R[5] ^ gate[1]
-    R[6] ^ mpo[1]    
+    R[6] ^ mpo[1]
     if site % 2 == 0:
-      mps[1] ^ gate[2]      
+      mps[1] ^ gate[2]
       conj_mps[1] ^ conj_gate[2]
-      output_order = [mps[0], conj_mps[0], gate[0], conj_gate[0], mpo[2], mpo[3], mpo[0]]
+      output_order = [
+          mps[0], conj_mps[0], gate[0], conj_gate[0], mpo[2], mpo[3], mpo[0]
+      ]
       out = R @ mps @ gate @ conj_mps @ conj_gate @ mpo
     else:
       mpo[2] ^ conj_gate[0]
       mpo[3] ^ gate[0]
-      output_order = [mps[0], conj_mps[0], mps[1], conj_mps[1], conj_gate[2], gate[2], mpo[0]]
+      output_order = [
+          mps[0], conj_mps[0], mps[1], conj_mps[1], conj_gate[2], gate[2],
+          mpo[0]
+      ]
       out = R @ mpo @ gate @ conj_gate @ conj_mps @ mps
 
     out.reorder_edges(output_order)
-    self.right_envs[(site - 2, site - 1)] = out.tensor    
-  def compute_left_envs(self, reference_mps):
+    self.right_envs[(site - 2, site - 1)] = out.tensor
+
+  def compute_left_envs(self, reference_mps, normalize=False):
     for site in range(len(self.mpo) - 1):
-      self.add_unitary_left((site, site + 1), reference_mps)
-      
-  def compute_right_envs(self, reference_mps):
+      self.add_unitary_left((site, site + 1),
+                            reference_mps,
+                            normalize=normalize)
+
+  def compute_right_envs(self, reference_mps, normalize=False):
     for site in reversed(range(len(self.mpo) - 1)):
-      self.add_unitary_right((site, site + 1), reference_mps)
-      
+      self.add_unitary_right((site, site + 1),
+                             reference_mps,
+                             normalize=normalize)
+
   def get_environment(self, sites):
-    net = tn.TensorNetwork(backend = self.backend)
+    net = tn.TensorNetwork(backend=self.backend)
     L = net.add_node(self.left_envs[sites])
     R = net.add_node(self.right_envs[sites])
     conj_gate = net.add_node(net.backend.conj(self.gates[sites]))
@@ -3557,7 +3590,7 @@ class TwoBodyStoquastisizer:
     R[4] ^ conj_gate[1]
     output_order = [L[5], R[5], L[2], R[2]]
     out = L @ R @ conj_gate
-    out.reorder_edges(output_order)    
+    out.reorder_edges(output_order)
     return out.tensor
 
   @staticmethod
@@ -3592,64 +3625,66 @@ class TwoBodyStoquastisizer:
         """
 
     if which in ('e', 'eye', 'h', 'haar', 'i', 'identities'):
-      ds = [self.mpo.get_tensor(site).shape[2]for site in range(len(self.mpo))]
-      self.gates.update(initialize_odd_two_body_gates(ds, dtype=self.mpo.dtype, which=which, noise=noise))
+      ds = [self.mpo.get_tensor(site).shape[2] for site in range(len(self.mpo))]
+      self.gates.update(
+          initialize_odd_two_body_gates(
+              ds, dtype=self.mpo.dtype, which=which, noise=noise))
     else:
       raise ValueError('wrong value {} for argument `which`'.format(which))
-    
+
   def absorb_gates(self):
-    net = tn.TensorNetwork(backend=self.backend)    
-    gates = { k : net.add_node(v) for k, v in self.gates.items()}
-    top_edges={}
-    bottom_edges={}    
+    net = tn.TensorNetwork(backend=self.backend)
+    gates = {k: net.add_node(v) for k, v in self.gates.items()}
+    top_edges = {}
+    bottom_edges = {}
     N = len(self.mpo)
-    for sites, gate  in gates.items():
+    for sites, gate in gates.items():
       site = sites[0]
-      if site % 2 ==1:
+      if site % 2 == 1:
         top_edges[site] = gate[2]
         top_edges[site + 1] = gate[3]
-      if site % 2 ==0:
+      if site % 2 == 0:
         bottom_edges[site] = gate[0]
         bottom_edges[site + 1] = gate[1]
-        
-    top_edges[0] = gates[(0,1)][2]
-    top_edges[N - 1] = gates[(N-2, N-1)][3]    
-                         
-    for sites, gate  in gates.items():
+
+    top_edges[0] = gates[(0, 1)][2]
+    top_edges[N - 1] = gates[(N - 2, N - 1)][3]
+
+    for sites, gate in gates.items():
       site = sites[0]
       if site % 2 == 0 and site != 0 and site != len(self.mpo) - 2:
         gates[sites][2] ^ gates[(site - 1, site)][1]
-        gates[sites][3] ^ gates[(site + 1, site + 2)][0]          
+        gates[sites][3] ^ gates[(site + 1, site + 2)][0]
       elif site == 0:
-        gates[sites][3] ^ gates[(site + 1, site + 2)][0]          
+        gates[sites][3] ^ gates[(site + 1, site + 2)][0]
       elif site == len(self.mpo) - 2:
         gates[sites][2] ^ gates[(site - 1, site)][1]
 
-
-    new_gates=[]
-    anc = {}    
+    new_gates = []
+    anc = {}
     for site in range(len(self.mpo) - 1):
       gate = gates[(site, site + 1)]
-      L, R,_ = net.split_node(gate,[gate[0], gate[2]], [gate[1], gate[3]])
+      L, R, _ = net.split_node(gate, [gate[0], gate[2]], [gate[1], gate[3]])
       anc[site] = L[2]
       new_gates.append(L)
       new_gates.append(R)
-    tensors=[new_gates[0].tensor]
+    tensors = [new_gates[0].tensor]
     out_nodes = {}
     out_nodes[0] = new_gates[0]
-    out_nodes[N - 1] = new_gates[-1]    
+    out_nodes[N - 1] = new_gates[-1]
     for n in range(1, len(new_gates) - 1, 2):
-      out_nodes[(n + 1)//2] = new_gates[n] @ new_gates[n + 1]
+      out_nodes[(n + 1) // 2] = new_gates[n] @ new_gates[n + 1]
 
     out_nodes[0].reorder_edges([anc[0], bottom_edges[0], top_edges[0]])
-    out_nodes[N - 1].reorder_edges([anc[N - 2], bottom_edges[N-1], top_edges[N-1]])          
+    out_nodes[N - 1].reorder_edges(
+        [anc[N - 2], bottom_edges[N - 1], top_edges[N - 1]])
     for s, node in out_nodes.items():
-      if s > 0 and s < N-1:
-        node.reorder_edges([anc[s-1], anc[s], bottom_edges[s], top_edges[s]])
+      if s > 0 and s < N - 1:
+        node.reorder_edges([anc[s - 1], anc[s], bottom_edges[s], top_edges[s]])
     tensors = [out_nodes[s].tensor for s in sorted(out_nodes.keys())]
     tensors[0] = tf.expand_dims(tensors[0], 0)
     tensors[-1] = tf.expand_dims(tensors[-1], 1)
-    final=[]
+    final = []
     for site in range(len(self.mpo)):
       net = tn.TensorNetwork(backend=self.backend)
       gate = net.add_node(tensors[site])
@@ -3657,32 +3692,37 @@ class TwoBodyStoquastisizer:
       mpo = net.add_node(self.mpo[site])
       gate[2] ^ mpo[3]
       conj_gate[2] ^ mpo[2]
-      out_order = [gate[0], mpo[0], conj_gate[0], gate[1], mpo[1], conj_gate[1], conj_gate[3], gate[3]]
+      out_order = [
+          gate[0], mpo[0], conj_gate[0], gate[1], mpo[1], conj_gate[1],
+          conj_gate[3], gate[3]
+      ]
       out = gate @ mpo @ conj_gate
       out.reorder_edges(out_order)
       d1, d2, d3, d4, d5, d6, d7, d8 = out.shape
-      final.append(tf.reshape(out.tensor,(d1*d2*d3, d4*d5*d6, d7, d8)))
+      final.append(tf.reshape(out.tensor, (d1 * d2 * d3, d4 * d5 * d6, d7, d8)))
     return MPO.FiniteMPO(final)
 
-      
-  def stoquastisize(self, reference_mps, num_steps):
+  def stoquastisize(self, reference_mps, num_steps, normalize=False):
     self.compute_right_envs(reference_mps)
-    self.add_unitary_left((0,1), reference_mps)#needed for initialization of left_envs[0]
+    self.add_unitary_left(
+        (0, 1), reference_mps)  #needed for initialization of left_envs[0]
     for step in range(num_steps):
-    
+
       for site in range(0, len(self.mpo) - 1):
         env = self.get_environment((site, site + 1))
-        cost = misc_mps.ncon([env,self.gates[(site, site + 1)]],[[1, 2, 3, 4], [1, 2, 3, 4]])
+        cost = misc_mps.ncon([env, self.gates[(site, site + 1)]],
+                             [[1, 2, 3, 4], [1, 2, 3, 4]])
         if tf.real(cost) > 0:
           return False
         self.gates[(site, site + 1)] = self.update_svd_numpy(env)
         self.add_unitary_left((site, site + 1), reference_mps)
-        stdout.write("\r step %i/%i cost: %.6E" % (step + 1, num_steps, cost))        
+        stdout.write("\r step %i/%i cost: %.6E" % (step + 1, num_steps, cost))
         stdout.flush()
 
-      for site in reversed(range(0, len(self.mpo)-1)):
+      for site in reversed(range(0, len(self.mpo) - 1)):
         env = self.get_environment((site, site + 1))
-        cost = misc_mps.ncon([env,self.gates[(site, site + 1)]],[[1, 2, 3, 4], [1, 2, 3, 4]])        
+        cost = misc_mps.ncon([env, self.gates[(site, site + 1)]],
+                             [[1, 2, 3, 4], [1, 2, 3, 4]])
         if tf.real(cost) > 0:
           return False
         self.gates[(site, site + 1)] = self.update_svd_numpy(env)
