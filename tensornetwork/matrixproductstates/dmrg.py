@@ -65,19 +65,10 @@ class FiniteDMRG:
                                self.mpo.nodes[len(self.mps) - 1].shape[1]))
     }
     if not all([
-        self.mps.check_orthonormality('left', site) < 1E-10
+        self.mps.check_orthonormality('right', site) < 1E-10
         for site in range(len(self.mps))
     ]):
-      if all([
-          self.mps.check_orthonormality('right', site) < 1E-10
-          for site in range(len(self.mps))
-      ]):
-        self.mps.position(0)
-      else:
-        self.mps.position(len(self.mps) - 1)
-        self.mps.position(0)
-
-    self.mps.position(0)
+      raise ValueError('FiniteDMRG expects a right orthogonal mps')
 
   def add_left_layer(self, site: int):
     self.left_blocks[site + 1] = mpslib.add_left_mpo_layer(
