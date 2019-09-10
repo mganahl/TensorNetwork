@@ -17,7 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 from typing import Optional, Tuple, Any
-
 Tensor = Any
 
 
@@ -153,7 +152,6 @@ def qr_decomposition(
   """
   left_dims = tf.shape(tensor)[:split_axis]
   right_dims = tf.shape(tensor)[split_axis:]
-
   tensor = tf.reshape(tensor,
                       [tf.reduce_prod(left_dims),
                        tf.reduce_prod(right_dims)])
