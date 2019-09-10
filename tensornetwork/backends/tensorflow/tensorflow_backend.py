@@ -18,9 +18,9 @@ from __future__ import print_function
 from typing import Optional, Any, Sequence, Tuple, Type
 from tensornetwork.backends import base_backend
 from tensornetwork.backends.tensorflow import decompositions
+import numpy as np
 # This might seem bad, but pytype treats tf.Tensor as Any anyway, so
 # we don't actually lose anything by doing this.
-import numpy as np
 Tensor = Any
 
 
@@ -57,8 +57,9 @@ class TensorFlowBackend(base_backend.BaseBackend):
                         max_singular_values: Optional[int] = None,
                         max_truncation_error: Optional[float] = None
                        ) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
-    return decompositions.svd_decomposition(
-        self.tf, tensor, split_axis, max_singular_values, max_truncation_error)
+    return decompositions.svd_decomposition(self.tf, tensor, split_axis,
+                                            max_singular_values,
+                                            max_truncation_error)
 
   def qr_decomposition(self, tensor: Tensor,
                        split_axis: int) -> Tuple[Tensor, Tensor]:
