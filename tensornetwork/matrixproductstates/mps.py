@@ -145,6 +145,7 @@ class FiniteMPS(TensorNetwork):
             left_edges=[self._nodes[n][0]],
             right_edges=[self._nodes[n][1], self._nodes[n][2]],
             right_name=self._nodes[n].name)
+
         # for an mps with > O(10) sites one needs to normalize to avoid
         # over or underflow errors; this takes care of the normalization
         self._nodes[n] = Q  #Q is a right-isometric tensor of rank 3
@@ -155,7 +156,7 @@ class FiniteMPS(TensorNetwork):
 
       self.center_position = site
     #return the norm of the last R tensor (useful for checks)
-    #return Z
+    return Z
 
   def check_orthonormality(self, which: Text, site: int) -> Tensor:
     """
