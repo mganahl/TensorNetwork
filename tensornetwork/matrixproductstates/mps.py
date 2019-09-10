@@ -167,7 +167,13 @@ class FiniteMPS(TensorNetwork):
       site:  the site of the tensor
     Returns:
       scalar Tensor: the L2 norm of the deviation from identity
+    Raises:
+      ValueError: If `which` is not 'l','left', 'r' or 'right'.
+
     """
+    if which not in ('l', 'left', 'r', 'right'):
+      raise ValueError("Found `which`={}. `which` can only be"
+                       " 'l','left', 'r' or 'right'.".format(which))
     net = TensorNetwork(backend=self.backend.name, dtype=self.dtype)
     n1 = net.add_node(self._nodes[site].tensor)
     n2 = net.add_node(self.backend.conj(self._nodes[site].tensor))
