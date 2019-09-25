@@ -19,7 +19,7 @@ from typing import Optional, Any, Sequence, Tuple
 from tensornetwork.backends import base_backend
 from tensornetwork.backends.pytorch import decompositions
 import numpy as np
-import torch
+
 # This might seem bad, but pytype treats tf.Tensor as Any anyway, so
 # we don't actually lose anything by doing this.
 Tensor = Any
@@ -28,8 +28,13 @@ Tensor = Any
 class PyTorchBackend(base_backend.BaseBackend):
   """See base_backend.BaseBackend for documentation."""
 
-  def __init__(self, dtype: Optional[torch.dtype] = None):
+  def __init__(self, dtype: Optional[Any] = None):
     super(PyTorchBackend, self).__init__()
+    try:
+      import torch
+    except ImportError:
+      raise ImportError("PyTorch not installed, please switch to a different "
+                        "backend or install PyTorch.")
     self.torch = torch
     self.name = "pytorch"
     self.dtype = dtype
@@ -105,40 +110,34 @@ class PyTorchBackend(base_backend.BaseBackend):
   def norm(self, tensor: Tensor) -> Tensor:
     return self.torch.norm(tensor)
 
-  def eye(self,
-          N: int,
-          dtype: Optional[torch.dtype] = None,
+  def eye(self, N: int, dtype: Optional[Any] = None,
           M: Optional[int] = None) -> Tensor:
     if not dtype:
-      dtype = self.dtype
-    if not dtype:
-      dtype = torch.float64
+      dtype = self.dtype if self.dtype is not None else self.torch.float64
+    if not M:
+      M = N  #torch crashes if one passes M = None with dtype!=None
     return self.torch.eye(n=N, m=M, dtype=dtype)
 
-  def ones(self, shape: Tuple[int, ...],
-           dtype: Optional[torch.dtype] = None) -> Tensor:
+  def ones(self, shape: Tuple[int, ...], dtype: Optional[Any] = None) -> Tensor:
     if not dtype:
-      dtype = self.dtype
-    if not dtype:
-      dtype = torch.float64
-
+      dtype = self.dtype if self.dtype is not None else self.torch.float64
     return self.torch.ones(shape, dtype=dtype)
 
   def zeros(self, shape: Tuple[int, ...],
-            dtype: Optional[torch.dtype] = None) -> Tensor:
+            dtype: Optional[Any] = None) -> Tensor:
     if not dtype:
-      dtype = self.dtype
-    if not dtype:
-      dtype = torch.float64
-
+      dtype = self.dtype if self.dtype is not None else self.torch.float64
     return self.torch.zeros(shape, dtype=dtype)
 
-  def randn(self, shape: Tuple[int, ...],
-            dtype: Optional[torch.dtype] = None) -> Tensor:
+  def randn(self,
+            shape: Tuple[int, ...],
+            dtype: Optional[Any] = None,
+            seed: Optional[int] = None) -> Tensor:
+    if seed:
+      self.torch.manual_seed(seed)
+
     if not dtype:
-      dtype = self.dtype
-    if not dtype:
-      dtype = torch.float64
+      dtype = self.dtype if self.dtype is not None else self.torch.float64
 
     return self.torch.randn(shape, dtype=dtype)
 

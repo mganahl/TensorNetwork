@@ -5,13 +5,11 @@ from __future__ import print_function
 import numpy as np
 import tensorflow as tf
 import pytest
-import tensornetwork.config as config_file
 from tensornetwork.backends.tensorflow import tensorflow_backend
-tf.compat.v1.enable_v2_behavior()
 
-tf_dtypes = config_file.supported_tensorflow_dtypes
+
 tf_randn_dtypes = [tf.float32, tf.float16, tf.float64]
-
+tf_dtypes = tf_randn_dtypes + [tf.complex128, tf.complex64]
 
 def test_tensordot():
   backend = tensorflow_backend.TensorFlowBackend()
@@ -155,6 +153,13 @@ def test_randn(dtype):
   assert a.shape == (4, 4)
 
 
+@pytest.mark.parametrize("dtype", [tf.complex64, tf.complex128])
+def test_randn_non_zero_imag(dtype):
+  backend = tensorflow_backend.TensorFlowBackend(dtype=dtype)
+  a = backend.randn((4, 4))
+  assert tf.math.greater(tf.linalg.norm(tf.imag(a)), 0.0)
+
+
 @pytest.mark.parametrize("dtype", tf_dtypes)
 def test_eye_dtype(dtype):
   backend = tensorflow_backend.TensorFlowBackend(dtype=dtype)
@@ -196,7 +201,6 @@ def test_eye_dtype_2(dtype):
 
 @pytest.mark.parametrize("dtype", tf_dtypes)
 def test_ones_dtype_2(dtype):
-  dtype = tf.float32
   backend = tensorflow_backend.TensorFlowBackend(dtype=dtype)
   a = backend.ones((4, 4))
   assert a.dtype == dtype
@@ -204,7 +208,6 @@ def test_ones_dtype_2(dtype):
 
 @pytest.mark.parametrize("dtype", tf_dtypes)
 def test_zeros_dtype_2(dtype):
-  dtype = tf.float32
   backend = tensorflow_backend.TensorFlowBackend(dtype=dtype)
   a = backend.zeros((4, 4))
   assert a.dtype == dtype
@@ -212,10 +215,17 @@ def test_zeros_dtype_2(dtype):
 
 @pytest.mark.parametrize("dtype", tf_randn_dtypes)
 def test_randn_dtype_2(dtype):
-  dtype = tf.float32
   backend = tensorflow_backend.TensorFlowBackend(dtype=dtype)
   a = backend.randn((4, 4))
   assert a.dtype == dtype
+
+
+@pytest.mark.parametrize("dtype", tf_randn_dtypes)
+def test_randn_seed(dtype):
+  backend = tensorflow_backend.TensorFlowBackend(dtype=dtype)
+  a = backend.randn((4, 4), seed=10)
+  b = backend.randn((4, 4), seed=10)
+  np.testing.assert_allclose(a, b)
 
 
 def test_conj():

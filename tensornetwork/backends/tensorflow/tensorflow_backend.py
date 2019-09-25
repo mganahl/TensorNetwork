@@ -18,6 +18,8 @@ from __future__ import print_function
 from typing import Optional, Any, Sequence, Tuple, Type
 from tensornetwork.backends import base_backend
 from tensornetwork.backends.tensorflow import decompositions
+from tensornetwork.backends.tensorflow import tensordot2
+
 # This might seem bad, but pytype treats tf.Tensor as Any anyway, so
 # we don't actually lose anything by doing this.
 import numpy as np
@@ -29,18 +31,17 @@ class TensorFlowBackend(base_backend.BaseBackend):
 
   def __init__(self, dtype: Optional[Type[np.number]] = None):
     super(TensorFlowBackend, self).__init__()
-    from tensornetwork.backends.tensorflow import tensordot2
-    self.tensordot2 = tensordot2
     try:
       import tensorflow as tf
     except ImportError:
-      raise ImportError()
+      raise ImportError("Tensorflow not installed, please switch to a "
+                        "different backend or install Tensorflow.")
     self.tf = tf
     self.name = "tensorflow"
     self.dtype = dtype
 
   def tensordot(self, a: Tensor, b: Tensor, axes: Sequence[Sequence[int]]):
-    return self.tensordot2.tensordot(a, b, axes)
+    return tensordot2.tensordot(self.tf, a, b, axes)
 
   def reshape(self, tensor: Tensor, shape: Tensor):
     return self.tf.reshape(tensor, shape)
@@ -95,7 +96,7 @@ class TensorFlowBackend(base_backend.BaseBackend):
     return self.tf.linalg.trace(tensor)
 
   def outer_product(self, tensor1: Tensor, tensor2: Tensor) -> Tensor:
-    return self.tensordot2.tensordot(tensor1, tensor2, 0)
+    return tensordot2.tensordot(self.tf, tensor1, tensor2, 0)
 
   def einsum(self, expression: str, *tensors: Tensor) -> Tensor:
     return self.tf.einsum(expression, *tensors)
@@ -108,19 +109,14 @@ class TensorFlowBackend(base_backend.BaseBackend):
           dtype: Optional[Type[np.number]] = None,
           M: Optional[int] = None) -> Tensor:
     if not dtype:
-      dtype = self.dtype
-    if not dtype:
-      dtype = self.tf.float64
-
+      dtype = self.dtype if self.dtype is not None else self.tf.float64
     return self.tf.eye(num_rows=N, num_columns=M, dtype=dtype)
 
   def ones(self,
            shape: Tuple[int, ...],
            dtype: Optional[Type[np.number]] = None) -> Tensor:
     if not dtype:
-      dtype = self.dtype
-    if not dtype:
-      dtype = self.tf.float64
+      dtype = self.dtype if self.dtype is not None else self.tf.float64
 
     return self.tf.ones(shape=shape, dtype=dtype)
 
@@ -128,20 +124,24 @@ class TensorFlowBackend(base_backend.BaseBackend):
             shape: Tuple[int, ...],
             dtype: Optional[Type[np.number]] = None) -> Tensor:
     if not dtype:
-      dtype = self.dtype
-    if not dtype:
-      dtype = self.tf.float64
+      dtype = self.dtype if self.dtype is not None else self.tf.float64
 
     return self.tf.zeros(shape, dtype=dtype)
 
   def randn(self,
             shape: Tuple[int, ...],
-            dtype: Optional[Type[np.number]] = None) -> Tensor:
-    if not dtype:
-      dtype = self.dtype
-    if not dtype:
-      dtype = self.tf.float64
+            dtype: Optional[Type[np.number]] = None,
+            seed: Optional[int] = None) -> Tensor:
+    if seed:
+      self.tf.random.set_random_seed(seed)
 
+    if not dtype:
+      dtype = self.dtype if self.dtype is not None else self.tf.float64
+
+    if (dtype is self.tf.complex128) or (dtype is self.tf.complex64):
+      return self.tf.complex(
+          self.tf.random_normal(shape=shape, dtype=dtype.real_dtype),
+          self.tf.random_normal(shape=shape, dtype=dtype.real_dtype))
     return self.tf.random_normal(shape=shape, dtype=dtype)
 
   def conj(self, tensor: Tensor) -> Tensor:
