@@ -3730,3 +3730,65 @@ class TwoBodyStoquastisizer:
         stdout.write("\r step %i/%i cost: %.6E" % (step + 1, num_steps, cost))
         stdout.flush()
     return True
+
+  @staticmethod
+  def mat_vec(left_env, right_env, left_gate, right_gate, mpo_tensor, backend,
+              site, mps_tensor):
+    net = tn.TensorNetwork(backend=backend)
+    L = net.add_node(left_env)
+    R = net.add_node(right_env)
+    LGATE = net.add_node(left_gate)
+    CONJ_LGATE = net.add_node(net.backend.conj(left_gate))
+    RGATE = net.add_node(right_gate)
+    CONJ_RGATE = net.add_node(net.backend.conj(right_gate))
+    MPS = net.add_node(mps_tensor)
+    CONJ_MPS = net.add_node(net.backend.conj(mps_tensor))
+    MPO = net.add_node(mpo_tensor)
+    if site % 2 == 1:
+      L[0] ^ MPS[0]
+      L[2] ^ LGATE[2]
+      L[3] ^ CONJ_LGATE[2]
+      L[4] ^ CONJ_LGATE[0]
+      L[5] ^ LGATE[0]
+      L[6] ^ MPO[0]
+      RGATE[2] ^ MPS[1]
+      RGATE[0] ^ LGATE[3]
+      LGATE[1] ^ MPO[3]
+      CONJ_LGATE[1] ^ MPO[2]
+      CONJ_LGATE[3] ^ CONJ_RGATE[0]
+      R[0] ^ MPS[2]
+      R[2] ^ RGATE[3]
+      R[3] ^ CONJ_RGATE[3]
+      R[4] ^ CONJ_RGATE[1]
+      R[5] ^ RGATE[1]
+      R[6] ^ MPO[1]
+
+      output_order = [L[1], CONJ_RGATE[2], R[1]]
+      out = (((((
+          (L @ LGATE) @ CONJ_LGATE) @ MPO) @ MPS) @ RGATE) @ R) @ CONJ_RGATE
+    else:
+      L[0] ^ MPS[0]
+      L[2] ^ LGATE[2]
+      L[3] ^ CONJ_LGATE[2]
+      L[4] ^ CONJ_LGATE[0]
+      L[5] ^ LGATE[0]
+      L[6] ^ MPO[0]
+      LGATE[3] ^ MPS[1]
+      RGATE[2] ^ LGATE[1]
+      RGATE[0] ^ MPO[3]
+
+      CONJ_RGATE[0] ^ MPO[2]
+      CONJ_LGATE[1] ^ CONJ_RGATE[2]
+      R[0] ^ MPS[2]
+      R[2] ^ RGATE[3]
+      R[3] ^ CONJ_RGATE[3]
+      R[4] ^ CONJ_RGATE[1]
+      R[5] ^ RGATE[1]
+      R[6] ^ MPO[1]
+
+      output_order = [L[1], CONJ_LGATE[3], R[1]]
+      out = (((((
+          (L @ LGATE) @ CONJ_LGATE) @ MPO) @ MPS) @ RGATE) @ R) @ CONJ_RGATE
+
+    out.reorder_edges(output_order)
+    return out.tensor
