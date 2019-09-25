@@ -24,7 +24,6 @@ import weakref
 from abc import ABC, abstractmethod
 import h5py
 
-
 string_type = h5py.special_dtype(vlen=str)
 Tensor = Any
 # This is required because of the circular dependancy between
@@ -329,7 +328,7 @@ class BaseNode(ABC):
       raise ValueError("Cannot use '@' on disabled node {}.".format(other.name))
     if self.network is None:
       raise ValueError("Cannot use '@' on disabled node {}.".format(self.name))
-    
+
     if other.network is not self.network:
       raise ValueError("Cannot use '@' on nodes in different networks.")
     return self.network.contract_between(self, other)
@@ -378,17 +377,17 @@ class BaseNode(ABC):
     self._signature = signature
 
   def disable(self):
-    if self in self.network.nodes_set:
-      raise ValueError(
-          'Node {} is part of a network. Disabelling not allowed'.format(
-              self.name))
-    self.network = None
+    return
+    # if self in self.network.nodes_set:
+    #   raise ValueError(
+    #       'Node {} is part of a network. Disabelling not allowed'.format(
+    #           self.name))
+    # self.network = None
 
   @classmethod
   @abstractmethod
   def _load_node(cls, net: TensorNetwork, node_data: h5py.Group) -> "BaseNode":
     return
-
 
   @classmethod
   def _load_node_data(cls, node_data: h5py.Group) -> Tuple[Any, Any, Any, Any]:
@@ -420,11 +419,14 @@ class BaseNode(ABC):
     node_group.create_dataset('signature', data=self.signature)
     node_group.create_dataset('name', data=self.name)
     node_group.create_dataset('shape', data=self.shape)
-    node_group.create_dataset('axis_names', dtype=string_type,
-                              data=np.array(self.axis_names, dtype=object))
-    node_group.create_dataset('edges', dtype=string_type,
-                              data=np.array([edge.name for edge in self.edges],
-                                            dtype=object))
+    node_group.create_dataset(
+        'axis_names',
+        dtype=string_type,
+        data=np.array(self.axis_names, dtype=object))
+    node_group.create_dataset(
+        'edges',
+        dtype=string_type,
+        data=np.array([edge.name for edge in self.edges], dtype=object))
 
 
 class Node(BaseNode):
@@ -444,12 +446,11 @@ class Node(BaseNode):
   an arbitrary dimension.
   """
 
-  def __init__(
-      self, 
-      tensor: Tensor, 
-      name: Text, 
-      axis_names: List[Text],
-      network: Optional[TensorNetwork] = None) -> None:
+  def __init__(self,
+               tensor: Tensor,
+               name: Text,
+               axis_names: List[Text],
+               network: Optional[TensorNetwork] = None) -> None:
     """Create a node for the TensorNetwork.
 
     Args:
@@ -509,8 +510,8 @@ class Node(BaseNode):
     """
     name, signature, _, axis_names = cls._load_node_data(node_data)
     tensor = node_data['tensor'][()]
-    node = net.add_node(value=tensor, name=name,
-                        axis_names=[ax for ax in axis_names])
+    node = net.add_node(
+        value=tensor, name=name, axis_names=[ax for ax in axis_names])
     node.set_signature(signature)
     return node
 
@@ -642,8 +643,11 @@ class CopyNode(BaseNode):
       The added node.
     """
     name, signature, shape, axis_names = cls._load_node_data(node_data)
-    node = net.add_copy_node(name=name, axis_names=[ax for ax in axis_names],
-                             rank=len(shape), dimension=shape[0])
+    node = net.add_copy_node(
+        name=name,
+        axis_names=[ax for ax in axis_names],
+        rank=len(shape),
+        dimension=shape[0])
     node.set_signature(signature)
     return node
 
@@ -814,8 +818,7 @@ class Edge:
     edge_group.create_dataset('name', data=self.name)
 
   @classmethod
-  def _load_edge(cls, edge_data: h5py.Group,
-                 nodes_dict: Dict[Text, BaseNode]):
+  def _load_edge(cls, edge_data: h5py.Group, nodes_dict: Dict[Text, BaseNode]):
     """Add an edge to a network based on hdf5 data.
 
     Args:
