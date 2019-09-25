@@ -29,6 +29,7 @@ class JaxBackend(numpy_backend.NumPyBackend):
     super(JaxBackend, self).__init__()
     try:
       import jax
+      jax.config.update("jax_enable_x64", True)
     except ImportError:
       raise ImportError("Jax not installed, please switch to a different "
                         "backend or install Jax.")
@@ -55,7 +56,6 @@ class JaxBackend(numpy_backend.NumPyBackend):
     if not seed:
       seed = numpy.random.randint(0, 2**63)
     key = self.jax.random.PRNGKey(seed)
-
     if not dtype:
       dtype = self.dtype if self.dtype is not None else numpy.float64
 
@@ -70,5 +70,4 @@ class JaxBackend(numpy_backend.NumPyBackend):
       return cmplx_randn(dtype, self.np.float64)
     if dtype is self.np.complex64:
       return cmplx_randn(dtype, self.np.float32)
-
     return self.jax.random.normal(key, shape).astype(dtype)
