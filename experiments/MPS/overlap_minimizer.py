@@ -763,8 +763,8 @@ class OverlapMaximizer:
         """
 
     if which in ('e', 'eye', 'h', 'haar', 'i', 'identities'):
-      ds = [self.mpo.get_tensor(site).shape[2] for site in range(len(self.mpo))]
-      self.gates = initialize_one_body_gates(
+      ds = [self.mps.get_tensor(site).shape[1] for site in range(len(self.mps))]
+      self.one_body_gates = initialize_one_body_gates(
           self.mps.d, self.mps.dtype, which, noise=noise)
     else:
       raise ValueError('wrong value {} for argument `which`'.format(which))
