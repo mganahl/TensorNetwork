@@ -103,8 +103,8 @@ class MPOBase:
     h = tf.reshape(self.get_2site_hamiltonian(site1, site2), (d1 * d2, d1 * d2))
     if not h.dtype == tau.dtype:
       raise TypeError(
-          'MPOBase.get_2site_gate: expected tau of dtype {0}, got dtype {1}'.
-          format(self.dtype, tau.dtype))
+          'MPOBase.get_2site_gate: expected tau of dtype {0}, got dtype {1}'
+          .format(self.dtype, tau.dtype))
 
     return tf.reshape(tf.linalg.expm(tau * h), (d1, d2, d1, d2))
 
@@ -516,6 +516,7 @@ class FiniteTFI(FiniteMPO):
 
     super().__init__(tensors=mpo, name='TFI_MPO')
 
+
 class FiniteTFI_2(FiniteMPO):
   """
     the good old transverse field Ising model
@@ -580,10 +581,184 @@ class FiniteTFI_2(FiniteMPO):
     super().__init__(tensors=mpo, name='TFI_MPO')
 
 
+class FiniteTFI2D(FiniteMPO):
+  """ 
+  the good old transverse field Ising MPO
+  convention: sigma_z=diag([-1,1])
+  this is X * X + Z    
+  """
+
+  def __init__(self, Jx1, Jx2, Bz, N1, N2, dtype=np.float64):
+    self.Jx1 = Jx1
+    self.Jx2 = Jx2
+    self.N1 = N1
+    self.N2 = N2
+    self.Bz = Bz
+    eye = np.eye(2).astype(dtype)
+    sigma_x = np.array([[0, 1], [1, 0]]).astype(dtype)
+    sigma_z = np.diag([-1, 1]).astype(dtype)
+    mpo_dim = 3 + N1 - 1
+    mpo_matrix = np.zeros((1, mpo_dim, 2, 2), dtype=dtype)
+    mpo_matrix[0, 0, :, :] = Bz * sigma_z
+    mpo_matrix[0, 1, :, :] = Jx1 * sigma_x
+    mpo_matrix[0, mpo_dim - 2, :, :] = Jx2 * sigma_x
+    mpo_matrix[0, mpo_dim - 1, :, :] = eye
+    mpo = []
+    mpo.append(tf.convert_to_tensor(mpo_matrix))
+    n2 = 0
+    #print('(n1, n2) = ({}, {}), Jx1, Jx2 = ({},{})'.format(
+    #    0 % N1, n2, Jx1, Jx2))
+    for n in range(1, N1 * N2 - 1):
+      if (n + 1) % N2 == 0:
+        jx1 = 0
+      else:
+        jx1 = Jx1
+
+      if n < N1 * (N2 - 1):
+        jx2 = Jx2
+      else:
+        jx2 = 0
+      if n % N1 == 0:
+        n2 += 1
+      #print('(n1, n2) = ({}, {}), Jx1, Jx2 = ({},{})'.format(
+      #    n % N1, n2, jx1, jx2))
+      mpo_dim = 3 + N1 - 1
+      mpo_matrix = np.zeros((mpo_dim, mpo_dim, 2, 2), dtype=dtype)
+      mpo_matrix[0, 0, :, :] = eye
+      mpo_matrix[1, 0, :, :] = sigma_x
+      for n1 in range(2, mpo_dim):
+        mpo_matrix[n1, n1 - 1, :, :] = eye
+      mpo_matrix[mpo_dim - 1, 0, :, :] = Bz * sigma_z
+      mpo_matrix[mpo_dim - 1, 1, :, :] = jx1 * sigma_x
+      mpo_matrix[mpo_dim - 1, mpo_dim - 2, :, :] = jx2 * sigma_x
+      mpo_matrix[mpo_dim - 1, mpo_dim - 1, :, :] = eye
+      mpo.append(tf.convert_to_tensor(mpo_matrix))
+
+    mpo_matrix = np.zeros((mpo_dim, 1, 2, 2), dtype=dtype)
+    mpo_matrix[0, 0, :, :] = eye
+    mpo_matrix[1, 0, :, :] = sigma_x
+    mpo_matrix[mpo_dim - 1, 0, :, :] = Bz * sigma_z
+    #print('(n1, n2) = ({}, {}), Jx1, Jx2 = ({},{})'.format(
+    #    N1 - 1 % N1, n2, 0, 0))
+    mpo.append(tf.convert_to_tensor(mpo_matrix))
+    super().__init__(tensors=mpo, name='FiniteTFI_MPO')
+
+
+class Finite2D_J1J2(FiniteMPO):
+  """ 
+  
+    
+      |\-j1_hor/|
+      | \     / |
+      |  \  j2_1|
+      |   \ /   |
+  j1_vert  X  j1_vert
+      |   / \   |
+      |  /  j2_2|
+      | /     \ |
+      |/-j1_hor\|
+    
+  """
+
+  def __init__(self, J1, J2, N1, N2, dtype=tf.float64):
+    if hasattr(dtype, 'as_numpy_dtype'):
+      dtype = dtype.as_numpy_dtype
+
+    self.J1 = J1
+    self.J2 = J2
+    self.N1 = N1
+    self.N2 = N2
+
+    Sx = np.array([[0, 0.5], [0.5, 0]])
+    Sy = np.diag([[0, 0.5], [-0.5, 0]])  #imaginary part is added below
+    Sz = np.diag([-0.5, 0.5])
+
+    mpo_dim = 3 * (N1 + 1) + 2
+    mpo = []
+
+    mat = np.zeros((1, mpo_dim, 2, 2), dtype=dtype)
+    mat[0, 1] = J1 * Sx
+    mat[0, 2] = -J1 * Sy
+    mat[0, 3] = J1 * Sz
+    mat[0, 3 * (N1 - 2) + 1, :, :] = J2 * Sx
+    mat[0, 3 * (N1 - 2) + 2, :, :] = -J2 * Sy
+    mat[0, 3 * (N1 - 2) + 3, :, :] = J2 * Sz
+    mat[0, 3 * (N1 - 1) + 1, :, :] = J1 * Sx
+    mat[0, 3 * (N1 - 1) + 2, :, :] = -J1 * Sy
+    mat[0, 3 * (N1 - 1) + 3, :, :] = J1 * Sz
+    mat[0, 3 * N1 + 1, :, :] = J2 * Sx
+    mat[0, 3 * N1 + 2, :, :] = -J2 * Sy
+    mat[0, 3 * N1 + 3, :, :] = J2 * Sz
+    mat[0, -1, :, :] = np.eye(2)
+    mpo.append(tf.convert_to_tensor(mat))
+    n2 = 0
+    n = 0
+    for n in range(1, N1 * N2 - 1):
+      if (n + 1) % N2 == 0:
+        j1_vert = 0
+        j2_1 = 0
+      else:
+        j1_vert = J1
+        j2_1 = J2
+
+      if n % N2 == 0:
+        j2_2 = 0
+      else:
+        j2_2 = J2
+
+      if n < N1 * (N2 - 1):
+        j1_hor = J2
+      else:
+        j1_hor = 0
+        j2_1 = 0
+        j2_2 = 0
+      if n % N1 == 0:
+        n2 += 1
+
+      mat = np.zeros((mpo_dim, mpo_dim, 2, 2), dtype=dtype)
+      mat[0, 0] = np.eye(2)
+      mat[1, 0] = Sx
+      mat[2, 0] = Sy
+      mat[3, 0] = Sz
+      for ind in range(4, 3 * N1 + 4):  #one more than XXX
+        mat[ind, ind - 3, :, :] = np.eye(2)
+
+      mat[-1, 1] = j1_vert * Sx
+      mat[-1, 2] = -j1_vert * Sy
+      mat[-1, 3] = j1_vert * Sz
+
+      mat[-1, 3 * (N1 - 2) + 1, :, :] = j2_2 * Sx
+      mat[-1, 3 * (N1 - 2) + 2, :, :] = -j2_2 * Sy
+      mat[-1, 3 * (N1 - 2) + 3, :, :] = j2_2 * Sz
+
+      mat[-1, 3 * (N1 - 1) + 1, :, :] = j1_hor * Sx
+      mat[-1, 3 * (N1 - 1) + 2, :, :] = -j1_hor * Sy
+      mat[-1, 3 * (N1 - 1) + 3, :, :] = j1_hor * Sz
+
+      mat[-1, 3 * N1 + 1, :, :] = j2_1 * Sx
+      mat[-1, 3 * N1 + 2, :, :] = -j2_1 * Sy
+      mat[-1, 3 * N1 + 3, :, :] = j2_1 * Sz
+
+      mat[-1, -1, :, :] = np.eye(2)
+      # print(
+      #     '(n1, n2) = ({}, {}), J1_vert, J1_hor = ({},{}), J2_1, J2_2=({},{})'.
+      #     format(n % N1, n2, j1_vert, j1_hor, j2_1, j2_2))
+
+      mpo.append(tf.convert_to_tensor(mat))
+
+    mat = np.zeros((mpo_dim, 1, 2, 2), dtype=dtype)
+    mat[0, 0] = np.eye(2)
+    mat[1, 0] = Sx
+    mat[2, 0] = Sy
+    mat[3, 0] = Sz
+    mpo.append(tf.convert_to_tensor(mat))
+    super().__init__(tensors=mpo, name='Finite2DJ1J2_MPO')
+
 
 class FiniteJ1J2(FiniteMPO):
-    def __init__(self, J1, J2, Bz, dtype=tf.float64):
-      """
+
+  def __init__(self, J1, J2, Bz, dtype=tf.float64):
+    """
       returns the MPO of the finite J1-J2 model
       Args:
         J1 (np.ndarray or tf.Tensor):  the S*S coupling strength between nearest neighbor lattice sites
@@ -593,65 +768,62 @@ class FiniteJ1J2(FiniteMPO):
       Returns:
         FiniteJ1J2:   the mpo of the finite J1J2 model
       """
-      if hasattr(dtype, 'as_numpy_dtype'):
-        dtype = dtype.as_numpy_dtype
-      
-      dtype=np.result_type(J1.dtype,J2.dtype,Bz.dtype,dtype)
-      self.J1 = J1.astype(dtype)
-      self.J2 = J2.astype(dtype)        
-      self.Bz = Bz.astype(dtype)
-      Sm = np.array([[0, 1], [0, 0]]).astype(dtype)
-      Sp = np.array([[0, 0], [1, 0]]).astype(dtype)
-      Sz = np.diag([-0.5, 0.5]).astype(dtype)
-      eye = np.eye(2).astype(dtype)
-                             
-      N = len(Bz)
-      mpo = []
-      temp = np.zeros((1, 8, 2, 2), dtype)
-      
-      temp[0, 0, :, :] = - Bz[0] * Sz
-      temp[0, 1, :, :] = J1[0] / 2 * Sm
-      temp[0, 2, :, :] = J1[0] / 2 * Sp
-      temp[0, 3, :, :] = J1[0] * Sz
-      temp[0, 4, :, :] = J2[0] / 2 * Sm
-      temp[0, 5, :, :] = J2[0] / 2 * Sp
-      temp[0, 6, :, :] = J2[0] * Sz
-      temp[0, 7, :, :] = eye
-      
-      
-      mpo.append(tf.convert_to_tensor(temp))      
-      for n in range(1, N - 1):
-          temp = np.zeros((8, 8, 2, 2), dtype)
-          temp[0, 0, :, :] = eye
-          temp[1, 0, :, :] = Sp
-          temp[2, 0, :, :] = Sm
-          temp[3, 0, :, :] = Sz
-          temp[4, 1, :, :] = eye
-          temp[5, 2, :, :] = eye
-          temp[6, 3, :, :] = eye
-          
-          temp[7, 0, :, :] = - Bz[n] * Sz
-          temp[7, 1, :, :] = J1[n] / 2 * Sm
-          temp[7, 2, :, :] = J1[n] / 2 * Sp
-          temp[7, 3, :, :] = J1[n] * Sz
-          temp[7, 4, :, :] = J2[n] / 2 * Sm
-          temp[7, 5, :, :] = J2[n] / 2 * Sp
-          temp[7, 6, :, :] = J2[n] * Sz
-          temp[7, 7, :, :] = eye
-          mpo.append(tf.convert_to_tensor(temp))            
-      
-      temp = np.zeros((8, 1, 2, 2), dtype)
+    if hasattr(dtype, 'as_numpy_dtype'):
+      dtype = dtype.as_numpy_dtype
+
+    dtype = np.result_type(J1.dtype, J2.dtype, Bz.dtype, dtype)
+    self.J1 = J1.astype(dtype)
+    self.J2 = J2.astype(dtype)
+    self.Bz = Bz.astype(dtype)
+    Sm = np.array([[0, 1], [0, 0]]).astype(dtype)
+    Sp = np.array([[0, 0], [1, 0]]).astype(dtype)
+    Sz = np.diag([-0.5, 0.5]).astype(dtype)
+    eye = np.eye(2).astype(dtype)
+
+    N = len(Bz)
+    mpo = []
+    temp = np.zeros((1, 8, 2, 2), dtype)
+
+    temp[0, 0, :, :] = -Bz[0] * Sz
+    temp[0, 1, :, :] = J1[0] / 2 * Sm
+    temp[0, 2, :, :] = J1[0] / 2 * Sp
+    temp[0, 3, :, :] = J1[0] * Sz
+    temp[0, 4, :, :] = J2[0] / 2 * Sm
+    temp[0, 5, :, :] = J2[0] / 2 * Sp
+    temp[0, 6, :, :] = J2[0] * Sz
+    temp[0, 7, :, :] = eye
+
+    mpo.append(tf.convert_to_tensor(temp))
+    for n in range(1, N - 1):
+      temp = np.zeros((8, 8, 2, 2), dtype)
       temp[0, 0, :, :] = eye
       temp[1, 0, :, :] = Sp
       temp[2, 0, :, :] = Sm
-      temp[3, 0, :, :] = Sz        
-      temp[7, 0, :, :] = -Bz[-1] * Sz
-      
-      
-      mpo.append(tf.convert_to_tensor(temp))
-      super().__init__(mpo)
+      temp[3, 0, :, :] = Sz
+      temp[4, 1, :, :] = eye
+      temp[5, 2, :, :] = eye
+      temp[6, 3, :, :] = eye
 
-    
+      temp[7, 0, :, :] = -Bz[n] * Sz
+      temp[7, 1, :, :] = J1[n] / 2 * Sm
+      temp[7, 2, :, :] = J1[n] / 2 * Sp
+      temp[7, 3, :, :] = J1[n] * Sz
+      temp[7, 4, :, :] = J2[n] / 2 * Sm
+      temp[7, 5, :, :] = J2[n] / 2 * Sp
+      temp[7, 6, :, :] = J2[n] * Sz
+      temp[7, 7, :, :] = eye
+      mpo.append(tf.convert_to_tensor(temp))
+
+    temp = np.zeros((8, 1, 2, 2), dtype)
+    temp[0, 0, :, :] = eye
+    temp[1, 0, :, :] = Sp
+    temp[2, 0, :, :] = Sm
+    temp[3, 0, :, :] = Sz
+    temp[7, 0, :, :] = -Bz[-1] * Sz
+
+    mpo.append(tf.convert_to_tensor(temp))
+    super().__init__(mpo)
+
 
 class InfiniteTFI(InfiniteMPO):
   """
