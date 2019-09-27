@@ -230,17 +230,17 @@ def eigsh_lanczos(A: LinearOperator,
   if A.dtype != dot_product.dtype:
     raise ValueError("A.dtype={} is different from dot_product.dtype={}".format(
         A.dtype, dot_product.dtype))
-  if initial_state and (A.dtype is not initial_state.dtype):
+  if (initial_state is not None) and (A.dtype is not initial_state.dtype):
     raise TypeError(
         "A.dtype={} is different from initial_state.dtype={}".format(
             A.dtype, initial_state.dtype))
-  if initial_state and (initial_state.shape != A.shape[1]):
+  if (initial_state is not None) and (initial_state.shape != A.shape[1]):
     raise ValueError(
         "A.shape[1]={} and initial_state.shape={} are incompatible.".format(
             A.shape[1], initial_state.shape))
 
   backend = A.backend
-  if not initial_state:
+  if initial_state is None:
     initial_state = backend.randn(A.shape[1])
   vector_n = initial_state
   Z = backend.norm(vector_n)
