@@ -28,20 +28,81 @@ import experiments.MPS.matrixproductoperators as MPO
 from tensornetwork.backends import backend_factory
 from tensornetwork import config
 from sys import stdout
+import matplotlib.pyplot as plt
 import experiments.MPS.matrixproductstates as MPS
 import functools as fct
 from experiments.MPS.matrixproductstates import InfiniteMPSCentralGauge, FiniteMPSCentralGauge
 from typing import Tuple, Optional, Any
+import itertools
 Tensor = Any
 
+def plot_grid(points):
+  for n1, n2, j1v, j1h, j21, j22 in points:
+      if abs(j1h) >1E-10:
+          plt.plot([n2,n2+1],[n1, n1],'-b',marker='o')
+      if abs(j1v)>1E-10:
+          #print('n1={}, n2={}, j1v={}'.format(n1,n2,j1v))
+          plt.plot([n2,n2],[n1, n1+1],'-r') 
+      if abs(j21) > 1E-10:
+          plt.plot([n2,n2+1],[n1, n1+1],'-g') 
+      if abs(j22) > 1E-10:
+          plt.plot([n2,n2+1],[n1, n1-1],'-c')        
+  plt.draw()
+  plt.show()
+  
+def plot_grid_2(points):
+  for p,ns in points.items():
+    for n in ns:
+      if abs(n[2]) > 1E-10:
+        plt.plot([p[1],n[1]],[p[0], n[0]],'-ob')
+  plt.draw()
+  plt.show()
 
-def block_MPO(mpo, block_length):
+def J1J2_exact(N1=4, N2=2, J1=1, J2=1):
+  SZ={}
+  SX={}
+  SY={}
+  sx = np.array([[0, 0.5], [0.5, 0]])
+  sy = np.array([[0, 0.5], [-0.5, 0]]) 
+  sz = np.diag([-0.5, 0.5])
+  n = 0
+  neighbors={}
+  for n2,n1 in itertools.product(list(range(N2)),list(range(N1))):
+    l = np.eye(int(2**(n)))
+    r = np.eye(int(2**(N1*N2-1-n)))
+    SX[(n1,n2)] = np.kron(np.kron(l, sx),r)
+    SY[(n1,n2)] = np.kron(np.kron(l, sy),r)
+    SZ[(n1,n2)] = np.kron(np.kron(l, sz),r)
+    neighbors[(n1,n2)]=[]
+    if n1 < N1-1:
+        neighbors[(n1,n2)].append((n1+1, n2, J1))
+        if n2<N2-1:
+            neighbors[(n1,n2)].append((n1+1, n2+1, J2))
+    if n2 < N2-1:
+        neighbors[(n1,n2)].append((n1, n2 + 1, J1))
+    if n1 > 0 and n2 < (N2-1):
+        neighbors[(n1,n2)].append((n1-1, n2+1, J2))
+    
+    n +=1
+  H = np.zeros((int(2**(N1*N2)),int(2**(N1*N2))), dtype=np.complex128)
+  for p, ns in neighbors.items():
+      for n in ns:
+          q = (n[0], n[1])
+          H += SX[p].dot(SX[q]) * n[2]
+          H += -SY[p].dot(SY[q]) * n[2]
+          H += SZ[p].dot(SZ[q]) * n[2]       
+
+  return H, neighbors
+
+  
+
+def block_MPO(mpo, block_length, backend='tensorflow'):
   if block_length == 1:
     return mpo
   assert len(mpo) % block_length == 0
   tensors = []
   for n in range(0, len(mpo), block_length):
-    net = tn.TensorNetwork()
+    net = tn.TensorNetwork(backend=backend)
     nodes = [net.add_node(mpo[n + b]) for b in range(block_length)]
     for n in range(len(nodes) - 1):
       nodes[n][1] ^ nodes[n + 1][0]
@@ -3924,7 +3985,6 @@ class TwoBodyStoquastisizer:
       pos = mps.pos
       mps.position(n)
       for site in range(pos, n):
-        print(site)
         self.add_unitary_left(
             (site - 1, site), mps[site],
             normalize=False)  #adds left_envs[(site + 1, site + 2)]
@@ -4007,5 +4067,6 @@ class TwoBodyStoquastisizer:
         self.add_unitary_right((site, site + 1),
                                  B,
                                  normalize=False)
+      sweep +=1
     return e
 
