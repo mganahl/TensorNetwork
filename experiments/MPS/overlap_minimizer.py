@@ -36,7 +36,13 @@ from typing import Tuple, Optional, Any
 import itertools
 Tensor = Any
 
-def plot_grid(points):
+def plot_grid_mpo(points):
+  """
+  plot a grid according to `points`.
+  `points` is a list of grid points as produced
+  by the constructor of Finite2D_J1J2(...,points=points)
+  
+  """
   for n1, n2, j1v, j1h, j21, j22 in points:
       if abs(j1h) >1E-10:
           plt.plot([n2,n2+1],[n1, n1],'-b',marker='o')
@@ -50,7 +56,14 @@ def plot_grid(points):
   plt.draw()
   plt.show()
   
-def plot_grid_2(points):
+def plot_neighbor_grid(points):
+  """
+  plot a grid according to `points`.
+  `points` is a dict mappig a point (n1,n2) to a list of neighbors
+  `points[(n1,n2)] = (n1',n2',coupling)`, where `coupling` is the
+  coupling strenght connecting the points
+  """
+
   for p,ns in points.items():
     for n in ns:
       if abs(n[2]) > 1E-10:
