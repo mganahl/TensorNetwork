@@ -23,6 +23,7 @@ from experiments.MPS import misc_mps
 from experiments.MPS import tensornetwork_tools as tnt
 from sys import stdout
 
+
 def is_mps_tensor(tensor):
   """
     test if `tensor` is of rank 3
@@ -435,8 +436,9 @@ class AbstractMPSUnitCell:
       ls = self.get_envs_left(left_sites_mod)
 
       A = self.get_tensor(site1)
-      r = misc_mps.ncon([A, tf.conj(A), op1, rs[site1]], [(-1, 2, 1), (-2, 3, 4),
-                                                    (3, 2), (1, 4)])
+      r = misc_mps.ncon([A, tf.conj(A), op1, rs[site1]], [(-1, 2, 1),
+                                                          (-2, 3, 4), (3, 2),
+                                                          (1, 4)])
 
       n1 = np.min(left_sites)
       for n in range(site1 - 1, n1 - 1, -1):
@@ -444,7 +446,7 @@ class AbstractMPSUnitCell:
           l = ls[n % N]
           A = self.get_tensor(n % N)
           res = misc_mps.ncon([l, A, op2, tf.conj(A), r],
-                        [[1, 4], [1, 2, 5], [3, 2], [4, 3, 6], [5, 6]])
+                              [[1, 4], [1, 2, 5], [3, 2], [4, 3, 6], [5, 6]])
           c.append(res)
         if n > n1:
           r = self.transfer_op(n % N, 'right', r)
@@ -456,8 +458,9 @@ class AbstractMPSUnitCell:
     if site1 in sites2:
       A = self.get_tensor(site1)
       op = misc_mps.ncon([op2, op1], [[-1, 1], [1, -2]])
-      res = misc_mps.ncon([ls[site1], A, op, tf.conj(A), rs[site1]],
-                    [[1, 4], [1, 2, 5], [3, 2], [4, 3, 6], [5, 6]])
+      res = misc_mps.ncon(
+          [ls[site1], A, op, tf.conj(A), rs[site1]],
+          [[1, 4], [1, 2, 5], [3, 2], [4, 3, 6], [5, 6]])
       c.append(res)
 
     right_sites = sites2[sites2 > site1]
@@ -467,8 +470,8 @@ class AbstractMPSUnitCell:
       rs = self.get_envs_right(right_sites_mod)
 
       A = self.get_tensor(site1)
-      l = misc_mps.ncon([ls[site1], A, op1, tf.conj(A)], [(1, 2), (1, 3, -1), (4, 3),
-                                                    (2, 4, -2)])
+      l = misc_mps.ncon([ls[site1], A, op1, tf.conj(A)], [(1, 2), (1, 3, -1),
+                                                          (4, 3), (2, 4, -2)])
 
       n2 = np.max(right_sites)
       for n in range(site1 + 1, n2 + 1):
@@ -476,7 +479,7 @@ class AbstractMPSUnitCell:
           r = rs[n % N]
           A = self.get_tensor(n % N)
           res = misc_mps.ncon([l, A, op2, tf.conj(A), r],
-                        [[1, 4], [1, 2, 5], [3, 2], [4, 3, 6], [5, 6]])
+                              [[1, 4], [1, 2, 5], [3, 2], [4, 3, 6], [5, 6]])
           c.append(res)
 
         if n < n2:
@@ -1130,7 +1133,7 @@ class MPSUnitCellCentralGauge(AbstractMPSUnitCell):
       right_mat = tf.eye(int(D_end), dtype=self.dtype)
     if position is None:
       position = len(tensors)
-    
+
     self.pos = position
     self.mat = centermatrix
     self.connector = connector
@@ -1228,8 +1231,8 @@ class MPSUnitCellCentralGauge(AbstractMPSUnitCell):
         """
     if site >= len(self) or site < 0:
       raise IndexError(
-          'index {0} out of bounds for MPSUnitCellCentralGauge of length {1}'.
-          format(site, len(self)))
+          'index {0} out of bounds for MPSUnitCellCentralGauge of length {1}'
+          .format(site, len(self)))
 
     if site <= self.pos:
       return tf.eye(int(self.D[site]), dtype=self.dtype)
@@ -1247,8 +1250,8 @@ class MPSUnitCellCentralGauge(AbstractMPSUnitCell):
     site = site % len(self)
     if site >= len(self) or site < 0:
       raise IndexError(
-          'index {0} out of bounds for MPSUnitCellCentralGauge of length {1}'.
-          format(site, len(self)))
+          'index {0} out of bounds for MPSUnitCellCentralGauge of length {1}'
+          .format(site, len(self)))
 
     if site == len(self) - 1:
       return misc_mps.ncon(
@@ -1304,7 +1307,7 @@ class MPSUnitCellCentralGauge(AbstractMPSUnitCell):
           [tf.conj(V), self._tensors[self.pos]], [[1, -1], [1, -2, -3]])
       self.mat = tf.diag(S)
 
-  def position(self, bond, D=None, thresh=1E-32,normalize=False):
+  def position(self, bond, D=None, thresh=1E-32, normalize=False):
     """
         position(bond,schmidt_thresh = 1E-16):
         shifts the center site of the MPS to "bond".
@@ -1322,12 +1325,16 @@ class MPSUnitCellCentralGauge(AbstractMPSUnitCell):
       for n in range(self.pos, bond):
         if (D is not None) or (thresh > 1E-16):
           tensor, s, v, _, tw = misc_mps.prepare_tensor_SVD(
-            self._tensors[n], direction=1, D=D, thresh=thresh, normalize=normalize)
-          mat = misc_mps.ncon([s,v],[[-1,1],[1,-2]])
-          trunc_weight += tf.math.reduce_sum(tf.pow(tw, 2))          
+              self._tensors[n],
+              direction=1,
+              D=D,
+              thresh=thresh,
+              normalize=normalize)
+          mat = misc_mps.ncon([s, v], [[-1, 1], [1, -2]])
+          trunc_weight += tf.math.reduce_sum(tf.pow(tw, 2))
         else:
           tensor, mat, _ = misc_mps.prepare_tensor_QR(
-            self._tensors[n], direction=1)
+              self._tensors[n], direction=1)
         self.mat = mat
         self._tensors[n] = tensor
         if (n + 1) < bond:
@@ -1339,14 +1346,18 @@ class MPSUnitCellCentralGauge(AbstractMPSUnitCell):
           [self._tensors[self.pos - 1], self.centermatrix],
           [[-1, -2, 1], [1, -3]])
       for n in range(self.pos - 1, bond - 1, -1):
-        if (D is not None) or (thresh > 1E-16):        
-          u, s, tensor, _ , tw= misc_mps.prepare_tensor_SVD(
-            self._tensors[n], direction=-1, D=D, thresh=thresh, normalize=normalize)
-          mat = misc_mps.ncon([u,s],[[-1,1],[1,-2]])
+        if (D is not None) or (thresh > 1E-16):
+          u, s, tensor, _, tw = misc_mps.prepare_tensor_SVD(
+              self._tensors[n],
+              direction=-1,
+              D=D,
+              thresh=thresh,
+              normalize=normalize)
+          mat = misc_mps.ncon([u, s], [[-1, 1], [1, -2]])
           trunc_weight += tf.math.reduce_sum(tf.pow(tw, 2))
-        else:        
+        else:
           mat, tensor, _ = misc_mps.prepare_tensor_QR(
-            self._tensors[n], direction=-1)
+              self._tensors[n], direction=-1)
         self.mat = mat
         self._tensors[n] = tensor
         if n > bond:
@@ -1355,7 +1366,7 @@ class MPSUnitCellCentralGauge(AbstractMPSUnitCell):
     self.pos = bond
 
     return trunc_weight
-  
+
   @staticmethod
   def ortho_deviation(tensor, which):
     """
@@ -1408,20 +1419,21 @@ class FiniteMPSCentralGauge(MPSUnitCellCentralGauge, AbstractFiniteMPS):
   """
   A simple MPS class for finite systems;
   """
-  @classmethod  
+
+  @classmethod
   def from_dense(cls, psi, name=None):
-    
+
     ds = psi.shape
     Dl = 1
-    tensors=[]
-    for n in range(len(ds)-1):
-        mat = np.reshape(psi,(ds[n]*Dl,np.prod(ds[n+1:])))
-        Q,R = np.linalg.qr(mat)
-        Dr = Q.shape[1]
-        tensors.append(tf.convert_to_tensor(np.reshape(Q,(Dl,ds[n],Dr))))
-        psi = np.reshape(R,((Dr,) + ds[n+1:]))
-        Dl = Dr
-    tensors.append(tf.convert_to_tensor(np.reshape(R,(Dl,ds[-1],1))))
+    tensors = []
+    for n in range(len(ds) - 1):
+      mat = np.reshape(psi, (ds[n] * Dl, np.prod(ds[n + 1:])))
+      Q, R = np.linalg.qr(mat)
+      Dr = Q.shape[1]
+      tensors.append(tf.convert_to_tensor(np.reshape(Q, (Dl, ds[n], Dr))))
+      psi = np.reshape(R, ((Dr,) + ds[n + 1:]))
+      Dl = Dr
+    tensors.append(tf.convert_to_tensor(np.reshape(R, (Dl, ds[-1], 1))))
     dtype = tensors[0].dtype
     D_end = tensors[-1].shape[2]
     centermatrix = tf.eye(int(D_end), dtype=dtype)
@@ -1432,7 +1444,7 @@ class FiniteMPSCentralGauge(MPSUnitCellCentralGauge, AbstractFiniteMPS):
         position=position,
         name=name)
     return mps
-   
+
   @classmethod
   def from_tensors(cls, tensors, name=None):
     """
@@ -1470,7 +1482,7 @@ class FiniteMPSCentralGauge(MPSUnitCellCentralGauge, AbstractFiniteMPS):
 
     if not (np.all([tensors[0].dtype == t.dtype for t in tensors])):
       raise TypeError(
-        'FiniteMPSCentralGauge.__init__: tensors need to have same types')
+          'FiniteMPSCentralGauge.__init__: tensors need to have same types')
     dtype = tensors[0].dtype
     # if not tensors[0].dtype == centermatrix.dtype:
     #   raise TypeError(
@@ -1483,12 +1495,13 @@ class FiniteMPSCentralGauge(MPSUnitCellCentralGauge, AbstractFiniteMPS):
         connector=tf.ones(shape=[1, 1], dtype=dtype),
         right_mat=tf.ones(shape=[1, 1], dtype=dtype),
         name=name)
-    
-  def get_amplitude(self,sigmas):
-      t = self.get_tensor(0)[:,sigmas[0],:]
-      for n in range(1,len(self)):
-        t = misc_mps.ncon([t,self.get_tensor(n)[:,sigmas[n],:]],[[-1,1],[1,-2]])
-      return t
+
+  def get_amplitude(self, sigmas):
+    t = self.get_tensor(0)[:, sigmas[0], :]
+    for n in range(1, len(self)):
+      t = misc_mps.ncon([t, self.get_tensor(n)[:, sigmas[n], :]],
+                        [[-1, 1], [1, -2]])
+    return t
 
   def canonize(self, name=None):
     """
@@ -1543,73 +1556,67 @@ class FiniteMPSCentralGauge(MPSUnitCellCentralGauge, AbstractFiniteMPS):
 
     return trunc_err
 
-
-  def get_amplitude(self, sigmas):
-      """
-      compute the amplitude of configuration `sigma`
-      This is not very efficient
-      Args:
-        sigma (tf.Tensor of shape (n_samples, N):  basis configuration
-      Returns:
-        tf.Tensor of shape (n_samples): the amplitudes
-
-      """
-      ds = self.d
-      dtype = self.dtype
-      left = tf.expand_dims(tf.ones(shape=(sigmas.shape[0], self.D[0]),dtype=dtype), 1)  #(Nt, 1, Dl)
-
-      for site in range(len(self)):
-        tmp = tn.ncon([self.get_tensor(site), tf.one_hot(sigmas[:,site], ds[site], dtype=dtype)],[[-2, 1, -3], [-1, 1]]) #(Nt, Dl, Dr)
-        left = tf.matmul(left, tmp) #(Nt, 1, Dr)
-      return tf.squeeze(left)
-  
   def generate_samples(self, num_samples, verbose=0):
-      """
+    """
       generate samples from the MPS probability amplitude
       Args:
           num_samples(int): number of samples
       Returns:
           tf.Tensor of shape (num_samples, len(self):  the samples
       """
-      dtype = self.dtype
-      
-      self.position(len(self))
-      self.position(0)
-      ds = self.d #calling self.d and self.D repeatedly is very slow
-      Ds = self.D
-      right_envs = self.get_envs_right(range(len(self)))
-      it = 0
-      sigmas = []
-      p_joint_1 = tf.ones(shape=[num_samples, 1], dtype=dtype)
-      lenv = tf.stack([tf.eye(Ds[0], dtype=dtype) for _ in range(num_samples)], axis=0) #shape (num_samples, 1, 1)
-      Z1 = tf.ones(shape=[num_samples,1], dtype=dtype)#shape (num_samples, 1)
-      for site in range(len(self)):
-        if verbose > 0:
-          stdout.write( "\rgenerating samples at site %i/%i" % (site,len(self)))
-        Z0 = tf.expand_dims(tf.linalg.norm(tf.reshape(lenv,(num_samples, Ds[site] * Ds[site])), axis=1),1) #shape (num_samples, 1)
-        lenv /= tf.expand_dims(Z0,2)
-        p_joint_0 = tf.linalg.diag_part(tn.ncon([lenv,self.get_tensor(site), tf.conj(self.get_tensor(site)), right_envs[site]],
-                                                [[-1, 1, 2], [1, -2, 3],[2, -3, 4], [3, 4]])) #shape (Nt, d)
-        #print(p_joint_0.shape, Z0.shape, Z1.shape, p_joint_1.shape)
-        p_cond = Z0 / Z1 * p_joint_0/p_joint_1
+    dtype = self.dtype
 
-        p_cond /= np.expand_dims(tf.math.reduce_sum(p_cond,axis=1),1)
+    self.position(len(self))
+    self.position(0)
+    ds = self.d  #calling self.d and self.D repeatedly is very slow
+    Ds = self.D
+    right_envs = self.get_envs_right(range(len(self)))
+    it = 0
+    sigmas = []
+    p_joint_1 = tf.ones(shape=[num_samples, 1], dtype=dtype)
+    lenv = tf.stack([tf.eye(Ds[0], dtype=dtype) for _ in range(num_samples)],
+                    axis=0)  #shape (num_samples, 1, 1)
+    Z1 = tf.ones(shape=[num_samples, 1], dtype=dtype)  #shape (num_samples, 1)
+    for site in range(len(self)):
+      if verbose > 0:
+        stdout.write("\rgenerating samples at site %i/%i" % (site, len(self)))
+      Z0 = tf.expand_dims(
+          tf.linalg.norm(
+              tf.reshape(lenv, (num_samples, Ds[site] * Ds[site])), axis=1),
+          1)  #shape (num_samples, 1)
+      lenv /= tf.expand_dims(Z0, 2)
+      p_joint_0 = tf.linalg.diag_part(
+          tn.ncon([
+              lenv,
+              self.get_tensor(site),
+              tf.conj(self.get_tensor(site)), right_envs[site]
+          ], [[-1, 1, 2], [1, -2, 3], [2, -3, 4], [3, 4]]))  #shape (Nt, d)
+      #print(p_joint_0.shape, Z0.shape, Z1.shape, p_joint_1.shape)
+      p_cond = Z0 / Z1 * p_joint_0 / p_joint_1
 
-        #print(tf.math.reduce_sum(p_cond,1))
-        sigmas.append(tf.squeeze(tf.random.categorical(tf.math.log(tf.abs(p_cond)),1)))
-        p_joint_1 = tf.expand_dims(tf.math.reduce_sum(p_cond * tf.one_hot(sigmas[-1], ds[site], dtype=dtype), axis=1),1)
+      p_cond /= np.expand_dims(tf.math.reduce_sum(p_cond, axis=1), 1)
 
-        one_hots = tf.one_hot(sigmas[-1],ds[site], dtype=dtype)
-        tmp = tn.ncon([self.get_tensor(site), one_hots],[[-2, 1, -3], [-1, 1]])          #tmp has shape (Nt, Dl, Dr)
-        tmp2 = tf.transpose(tf.matmul(tf.transpose(lenv,(0, 2, 1)), tmp), (0, 2, 1)) #has shape (Nt, Dr, Dl') #FIXME: get rid of all these transposes
-        lenv = tf.matmul(tmp2, tf.conj(tmp)) #has shape (Nt, Dr, Dr')
-        Z1 = Z0
-      return tf.stack(sigmas, axis=1)
-    
+      #print(tf.math.reduce_sum(p_cond,1))
+      sigmas.append(
+          tf.squeeze(tf.random.categorical(tf.math.log(tf.abs(p_cond)), 1)))
+      p_joint_1 = tf.expand_dims(
+          tf.math.reduce_sum(
+              p_cond * tf.one_hot(sigmas[-1], ds[site], dtype=dtype), axis=1),
+          1)
 
+      one_hots = tf.one_hot(sigmas[-1], ds[site], dtype=dtype)
+      tmp = tn.ncon([self.get_tensor(site), one_hots],
+                    [[-2, 1, -3], [-1, 1]])  #tmp has shape (Nt, Dl, Dr)
+      tmp2 = tf.transpose(
+          tf.matmul(tf.transpose(lenv, (0, 2, 1)), tmp),
+          (0, 2,
+           1))  #has shape (Nt, Dr, Dl') #FIXME: get rid of all these transposes
+      lenv = tf.matmul(tmp2, tf.conj(tmp))  #has shape (Nt, Dr, Dr')
+      Z1 = Z0
+    return tf.stack(sigmas, axis=1)
 
   def get_amplitude(self, sigmas):
-      """
+    """
       compute the amplitudes of configurations `sigmas`
       Args:
         sigma (tf.Tensor of shape (n_samples, N):  basis configuration
@@ -1617,17 +1624,22 @@ class FiniteMPSCentralGauge(MPSUnitCellCentralGauge, AbstractFiniteMPS):
         tf.Tensor of shape (n_samples): the amplitudes
 
       """
-      ds = self.d
-      dtype = self.dtype
-      left = tf.expand_dims(tf.ones(shape=(sigmas.shape[0], self.D[0]),dtype=dtype), 1)  #(Nt, 1, Dl)
+    ds = self.d
+    dtype = self.dtype
+    left = tf.expand_dims(
+        tf.ones(shape=(sigmas.shape[0], self.D[0]), dtype=dtype),
+        1)  #(Nt, 1, Dl)
 
-      for site in range(len(self)):
-        tmp = misc_mps.ncon([self.get_tensor(site), tf.one_hot(sigmas[:,site], ds[site], dtype=dtype)],[[-2, 1, -3], [-1, 1]]) #(Nt, Dl, Dr)
-        left = tf.matmul(left, tmp) #(Nt, 1, Dr)
-      return tf.squeeze(left)
-    
+    for site in range(len(self)):
+      tmp = misc_mps.ncon([
+          self.get_tensor(site),
+          tf.one_hot(sigmas[:, site], ds[site], dtype=dtype)
+      ], [[-2, 1, -3], [-1, 1]])  #(Nt, Dl, Dr)
+      left = tf.matmul(left, tmp)  #(Nt, 1, Dr)
+    return tf.squeeze(left)
+
   def get_log_amplitude(self, sigmas):
-      """
+    """
       compute the phases and log-abs-amplitudes of configurations `sigmas`
       Args:
         sigma (tf.Tensor of shape (n_samples, N):  basis configuration
@@ -1635,19 +1647,24 @@ class FiniteMPSCentralGauge(MPSUnitCellCentralGauge, AbstractFiniteMPS):
         tf.Tensor of shape (n_samples): the amplitudes
 
       """
-      ds = self.d
-      dtype = self.dtype
-      left = tf.expand_dims(tf.ones(shape=(sigmas.shape[0], self.D[0]),dtype=dtype), 1)  #(Nt, 1, Dl)
-      log_norms = tf.zeros(shape = [sigmas.shape[0]], dtype=self.dtype)
-      for site in range(len(self)):
-        tmp = misc_mps.ncon([self.get_tensor(site), tf.one_hot(sigmas[:,site], ds[site], dtype=dtype)],[[-2, 1, -3], [-1, 1]]) #(Nt, Dl, Dr)
-        left = tf.matmul(left, tmp) #(Nt, 1, Dr)
-        norms = tf.linalg.norm(left, axis = 2) #shape (Nt, 1)
-        left /= tf.expand_dims(norms,2)
-        log_norms += tf.squeeze(tf.math.log(norms))
-      return tf.squeeze(left), log_norms
+    ds = self.d
+    dtype = self.dtype
+    left = tf.expand_dims(
+        tf.ones(shape=(sigmas.shape[0], self.D[0]), dtype=dtype),
+        1)  #(Nt, 1, Dl)
+    log_norms = tf.zeros(shape=[sigmas.shape[0]], dtype=self.dtype)
+    for site in range(len(self)):
+      tmp = misc_mps.ncon([
+          self.get_tensor(site),
+          tf.one_hot(sigmas[:, site], ds[site], dtype=dtype)
+      ], [[-2, 1, -3], [-1, 1]])  #(Nt, Dl, Dr)
+      left = tf.matmul(left, tmp)  #(Nt, 1, Dr)
+      norms = tf.linalg.norm(left, axis=2)  #shape (Nt, 1)
+      left /= tf.expand_dims(norms, 2)
+      log_norms += tf.squeeze(tf.math.log(norms))
+    return tf.squeeze(left), log_norms
 
-    
+
 class InfiniteMPSCentralGauge(MPSUnitCellCentralGauge, AbstractInfiniteMPS):
   """
     A simple MPS class for infinite systems;
