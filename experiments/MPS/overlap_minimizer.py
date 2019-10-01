@@ -36,6 +36,7 @@ from typing import Tuple, Optional, Any
 import itertools
 Tensor = Any
 
+
 def plot_grid_mpo(points):
   """
   plot a grid according to `points`.
@@ -44,18 +45,19 @@ def plot_grid_mpo(points):
   
   """
   for n1, n2, j1v, j1h, j21, j22 in points:
-      if abs(j1h) >1E-10:
-          plt.plot([n2,n2+1],[n1, n1],'-b',marker='o')
-      if abs(j1v)>1E-10:
-          #print('n1={}, n2={}, j1v={}'.format(n1,n2,j1v))
-          plt.plot([n2,n2],[n1, n1+1],'-r') 
-      if abs(j21) > 1E-10:
-          plt.plot([n2,n2+1],[n1, n1+1],'-g') 
-      if abs(j22) > 1E-10:
-          plt.plot([n2,n2+1],[n1, n1-1],'-c')        
+    if abs(j1h) > 1E-10:
+      plt.plot([n2, n2 + 1], [n1, n1], '-b', marker='o')
+    if abs(j1v) > 1E-10:
+      #print('n1={}, n2={}, j1v={}'.format(n1,n2,j1v))
+      plt.plot([n2, n2], [n1, n1 + 1], '-r')
+    if abs(j21) > 1E-10:
+      plt.plot([n2, n2 + 1], [n1, n1 + 1], '-g')
+    if abs(j22) > 1E-10:
+      plt.plot([n2, n2 + 1], [n1, n1 - 1], '-c')
   plt.draw()
   plt.show()
-  
+
+
 def plot_neighbor_grid(points):
   """
   plot a grid according to `points`.
@@ -64,50 +66,50 @@ def plot_neighbor_grid(points):
   coupling strenght connecting the points
   """
 
-  for p,ns in points.items():
+  for p, ns in points.items():
     for n in ns:
       if abs(n[2]) > 1E-10:
-        plt.plot([p[1],n[1]],[p[0], n[0]],'-ob')
+        plt.plot([p[1], n[1]], [p[0], n[0]], '-ob')
   plt.draw()
   plt.show()
 
+
 def J1J2_exact(N1=4, N2=2, J1=1, J2=1):
-  SZ={}
-  SX={}
-  SY={}
+  SZ = {}
+  SX = {}
+  SY = {}
   sx = np.array([[0, 0.5], [0.5, 0]])
-  sy = np.array([[0, 0.5], [-0.5, 0]]) 
+  sy = np.array([[0, 0.5], [-0.5, 0]])
   sz = np.diag([-0.5, 0.5])
   n = 0
-  neighbors={}
-  for n2,n1 in itertools.product(list(range(N2)),list(range(N1))):
+  neighbors = {}
+  for n2, n1 in itertools.product(list(range(N2)), list(range(N1))):
     l = np.eye(int(2**(n)))
-    r = np.eye(int(2**(N1*N2-1-n)))
-    SX[(n1,n2)] = np.kron(np.kron(l, sx),r)
-    SY[(n1,n2)] = np.kron(np.kron(l, sy),r)
-    SZ[(n1,n2)] = np.kron(np.kron(l, sz),r)
-    neighbors[(n1,n2)]=[]
-    if n1 < N1-1:
-        neighbors[(n1,n2)].append((n1+1, n2, J1))
-        if n2<N2-1:
-            neighbors[(n1,n2)].append((n1+1, n2+1, J2))
-    if n2 < N2-1:
-        neighbors[(n1,n2)].append((n1, n2 + 1, J1))
-    if n1 > 0 and n2 < (N2-1):
-        neighbors[(n1,n2)].append((n1-1, n2+1, J2))
-    
-    n +=1
-  H = np.zeros((int(2**(N1*N2)),int(2**(N1*N2))), dtype=np.complex128)
+    r = np.eye(int(2**(N1 * N2 - 1 - n)))
+    SX[(n1, n2)] = np.kron(np.kron(l, sx), r)
+    SY[(n1, n2)] = np.kron(np.kron(l, sy), r)
+    SZ[(n1, n2)] = np.kron(np.kron(l, sz), r)
+    neighbors[(n1, n2)] = []
+    if n1 < N1 - 1:
+      neighbors[(n1, n2)].append((n1 + 1, n2, J1))
+      if n2 < N2 - 1:
+        neighbors[(n1, n2)].append((n1 + 1, n2 + 1, J2))
+    if n2 < N2 - 1:
+      neighbors[(n1, n2)].append((n1, n2 + 1, J1))
+    if n1 > 0 and n2 < (N2 - 1):
+      neighbors[(n1, n2)].append((n1 - 1, n2 + 1, J2))
+
+    n += 1
+  H = np.zeros((int(2**(N1 * N2)), int(2**(N1 * N2))), dtype=np.complex128)
   for p, ns in neighbors.items():
-      for n in ns:
-          q = (n[0], n[1])
-          H += SX[p].dot(SX[q]) * n[2]
-          H += -SY[p].dot(SY[q]) * n[2]
-          H += SZ[p].dot(SZ[q]) * n[2]       
+    for n in ns:
+      q = (n[0], n[1])
+      H += SX[p].dot(SX[q]) * n[2]
+      H += -SY[p].dot(SY[q]) * n[2]
+      H += SZ[p].dot(SZ[q]) * n[2]
 
   return H, neighbors
 
-  
 
 def block_MPO(mpo, block_length, backend='tensorflow'):
   if block_length == 1:
@@ -3539,7 +3541,9 @@ class TwoBodyStoquastisizer:
     self.gates[(len(self.mpo) - 1, len(self.mpo))] = be.reshape(
         be.eye(dim), (dim, 1, dim, 1))
     #right_envs[(site-1, site)] contains the mps tensor at site `site`
-    self.right_envs = {(len(self.mpo) - 1, len(self.mpo)): be.ones((1, 1, 1, 1, 1, 1, 1))}    
+    self.right_envs = {
+        (len(self.mpo) - 1, len(self.mpo)): be.ones((1, 1, 1, 1, 1, 1, 1))
+    }
     #left_envs[(site, site + 1)] contains the mps tensor at site `site`
     self.left_envs = {(-1, 0): be.ones((1, 1, 1, 1, 1, 1, 1))}
 
@@ -3682,7 +3686,7 @@ class TwoBodyStoquastisizer:
         del self.left_envs[(site, site + 1)]
       except KeyError:
         pass
-      
+
     for site in range(-1, len(self.mpo) - 1):
       self.add_unitary_left((site, site + 1),
                             reference_mps.get_tensor(site + 1),
@@ -3690,7 +3694,7 @@ class TwoBodyStoquastisizer:
 
   def compute_right_envs(self, reference_mps, normalize=False):
 
-    for site in reversed(range(len(self.mpo)-1)):
+    for site in reversed(range(len(self.mpo) - 1)):
       try:
         del self.right_envs[(site, site + 1)]
       except KeyError:
@@ -3737,7 +3741,54 @@ class TwoBodyStoquastisizer:
 
   def reset_gates(self, which='eye', noise=0.0):
     """
-    reset the one-body gates
+    reset the two-body gates
+    Args:
+      which (str):   the type to which gates should be reset
+        `which` can take values in {'eye','e', 'identities', 'i'} for identity operators
+         or in ('h','haar') for Haar random unitaries
+         noise (float): nose parameter; if nonzero, add noise to the identities
+    Returns:
+      dict: maps (s,s+1) to gate for s even
+    Raises:
+      ValueError
+     """
+
+    if which in ('e', 'eye', 'h', 'haar', 'i', 'identities'):
+      ds = [self.mpo.get_tensor(site).shape[2] for site in range(len(self.mpo))]
+      self.gates.update(
+          initialize_even_two_body_gates(
+              ds, dtype=self.mpo.dtype, which=which, noise=noise))
+      self.gates.update(
+          initialize_odd_two_body_gates(
+              ds, dtype=self.mpo.dtype, which=which, noise=noise))
+    else:
+      raise ValueError('wrong value {} for argument `which`'.format(which))
+
+  def reset_even_gates(self, which='eye', noise=0.0):
+    """p
+    reset the even two-body gates
+    Args:
+      which (str):   the type to which gates should be reset
+        `which` can take values in {'eye','e', 'identities', 'i'} for identity operators
+         or in ('h','haar') for Haar random unitaries
+         noise (float): nose parameter; if nonzero, add noise to the identities
+    Returns:
+      dict: maps (s,s+1) to gate for s even
+    Raises:
+      ValueError
+     """
+
+    if which in ('e', 'eye', 'h', 'haar', 'i', 'identities'):
+      ds = [self.mpo.get_tensor(site).shape[2] for site in range(len(self.mpo))]
+      self.gates.update(
+          initialize_even_two_body_gates(
+              ds, dtype=self.mpo.dtype, which=which, noise=noise))
+    else:
+      raise ValueError('wrong value {} for argument `which`'.format(which))
+
+  def reset_odd_gates(self, which='eye', noise=0.0):
+    """p
+    reset the even two-body gates
     Args:
       which (str):   the type to which gates should be reset
         `which` can take values in {'eye','e', 'identities', 'i'} for identity operators
@@ -3866,7 +3917,7 @@ class TwoBodyStoquastisizer:
   @staticmethod
   def mat_vec(left_env, right_env, left_gate, right_gate, mpo_tensor, backend,
               site, mps_tensor):
-    #TODO: contraction order probably not optimal. Fix this!    
+    #TODO: contraction order probably not optimal. Fix this!
     net = tn.TensorNetwork(backend=backend)
     L = net.add_node(left_env)
     R = net.add_node(right_env)
@@ -3923,7 +3974,7 @@ class TwoBodyStoquastisizer:
       t1 = time.time()
       out = (((((
           (R @ RGATE) @ CONJ_RGATE) @ MPO) @ MPS) @ LGATE) @ L) @ CONJ_LGATE
-      
+
     out.reorder_edges(output_order)
     return out.tensor
 
@@ -3933,7 +3984,7 @@ class TwoBodyStoquastisizer:
                          sweep_dir,
                          precision=1E-6,
                          ncv=40,
-                         delta=1E-8,                         
+                         delta=1E-8,
                          ndiag=10,
                          verbose=0):
 
@@ -3956,12 +4007,13 @@ class TwoBodyStoquastisizer:
     elif sweep_dir in (1, 'l', 'left'):
       #NOTE (martin) don't use get_tensor here
       initial = misc_mps.ncon([mps[site], mps.mat], [[-1, -2, 1], [1, -3]])
+
     def matvec(mps_tensor):
       return self.mat_vec(
           self.left_envs[(site - 1,
                           site)],  # contains the MPS tensor at site - 1
           self.right_envs[(site,
-                          site + 1)],  # contains the MPS tensor at site + 1
+                           site + 1)],  # contains the MPS tensor at site + 1
           self.gates[(site - 1, site)],
           self.gates[(site, site + 1)],
           mpo_tensor=self.mpo[site],
@@ -3971,19 +4023,23 @@ class TwoBodyStoquastisizer:
 
     def dotprod(a, b):
       return misc_mps.ncon([a, b], [[1, 2, 3], [1, 2, 3]])
+
     lin_op = tn.LinearOperator(
         matvec,
         shape=(mps[site].shape, mps[site].shape),
         dtype=mps.dtype,
         backend=self.backend)
     dot_prod = tn.ScalarProduct(dotprod, dtype=mps.dtype, backend=self.backend)
-    eigvals, eigvecs = tn.eigsh_lanczos(lin_op, dot_prod, initial_state=initial,
-                                        ncv=ncv,
-                                        numeig=1,
-                                        tol=precision,
-                                        delta=delta)
+    eigvals, eigvecs = tn.eigsh_lanczos(
+        lin_op,
+        dot_prod,
+        initial_state=initial,
+        ncv=ncv,
+        numeig=1,
+        tol=precision,
+        delta=delta)
     opt = eigvecs[0]
-    e=eigvals[0]
+    e = eigvals[0]
     return e, opt
 
   def position(self, mps, n):
@@ -4022,30 +4078,39 @@ class TwoBodyStoquastisizer:
     #     pass
 
     return self
-  def do_dmrg(self, mps, num_sweeps, precision=1E-6, ncv=40, delta=1E-10, verbose=0):
+
+  def do_dmrg(self,
+              mps,
+              num_sweeps,
+              precision=1E-6,
+              ncv=40,
+              delta=1E-10,
+              verbose=0):
     mps.position(0)
     #delete the old left environments
     for site in range(len(mps)):
       try:
-        del self.left_envs[(site,site+1)]
+        del self.left_envs[(site, site + 1)]
       except KeyError:
         pass
-    #get right environments  
+    #get right environments
     self.compute_right_envs(mps)
-    
+
     sweep = 0
     while sweep < num_sweeps:
-      for site in range(len(mps)-1):
-        e, opt = self._optimize_1s_local(mps,site,sweep_dir='r',precision=precision,ncv=ncv,delta=delta)
+      for site in range(len(mps) - 1):
+        e, opt = self._optimize_1s_local(
+            mps, site, sweep_dir='r', precision=precision, ncv=ncv, delta=delta)
         Dnew = tf.shape(opt)[2]
         if verbose > 0:
           stdout.write(
-              "\rSS-DMRG it=%i/%i, site=%i/%i: optimized E=%.16f+%.16f at D=%i" %
-            (sweep, num_sweeps, site, len(mps), np.real(e), np.imag(e), Dnew))
+              "\rSS-DMRG it=%i/%i, site=%i/%i: optimized E=%.16f+%.16f at D=%i"
+              % (sweep, num_sweeps, site, len(mps), np.real(e), np.imag(e),
+                 Dnew))
           stdout.flush()
         if verbose > 1:
           print("")
-        
+
         #if sweep_dir in (-1, 'r', 'right'):
         A, mat, Z = misc_mps.prepare_tensor_QR(opt, direction='l')
         A /= Z
@@ -4053,33 +4118,30 @@ class TwoBodyStoquastisizer:
         #if sweep_dir in (-1, 'r', 'right'):
         mps._tensors[site] = A
         mps.pos += 1
-        self.add_unitary_left((site - 1, site),
-                              A,
-                              normalize=False)
-  
+        self.add_unitary_left((site - 1, site), A, normalize=False)
+
       #mps.pos at this point is at len(mps) - 1
       #shift it to the right end to start left sweep
-      self.position(mps,len(mps))
+      self.position(mps, len(mps))
       for site in reversed(range(len(mps))):
-        e, opt = self._optimize_1s_local(mps,site,sweep_dir='l',precision=precision,ncv=ncv,delta=delta)
+        e, opt = self._optimize_1s_local(
+            mps, site, sweep_dir='l', precision=precision, ncv=ncv, delta=delta)
         Dnew = tf.shape(opt)[2]
         if verbose > 0:
           stdout.write(
-              "\rSS-DMRG it=%i/%i, site=%i/%i: optimized E=%.16f+%.16f at D=%i" %
-            (sweep, num_sweeps, site, len(mps), np.real(e), np.imag(e), Dnew))
+              "\rSS-DMRG it=%i/%i, site=%i/%i: optimized E=%.16f+%.16f at D=%i"
+              % (sweep, num_sweeps, site, len(mps), np.real(e), np.imag(e),
+                 Dnew))
           stdout.flush()
         if verbose > 1:
           print("")
         #if sweep_dir in (1, 'l', 'left'):
         mat, B, Z = misc_mps.prepare_tensor_QR(opt, direction='r')
         B /= Z
-        mps.mat = mat      
+        mps.mat = mat
         #if sweep_dir in (1, 'l', 'left'):
         mps._tensors[site] = B
         mps.pos = site
-        self.add_unitary_right((site, site + 1),
-                                 B,
-                                 normalize=False)
-      sweep +=1
+        self.add_unitary_right((site, site + 1), B, normalize=False)
+      sweep += 1
     return e
-
