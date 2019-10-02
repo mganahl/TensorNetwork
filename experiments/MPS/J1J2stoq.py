@@ -91,7 +91,6 @@ parser.add_argument(
     default=None)
 
 args = parser.parse_args()
-print(args.overwrite)
 if not args.N1:
   raise ValueError('no value for N1 given')
 if not args.N2:
