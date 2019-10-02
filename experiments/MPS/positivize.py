@@ -9,9 +9,8 @@ import experiments.MPS.matrixproductoperators as MPO
 import experiments.MPS.DMRG as DMRG
 import experiments.MERA.misc_mera as misc_mera
 import experiments.MPS.overlap_minimizer as OM
-import sign_mps_data.readMPS as readMPS
 from scipy.linalg import expm
-import numpy as  np
+import numpy as np
 import copy
 import os
 import itertools
@@ -23,10 +22,67 @@ misc_mps.compile_ncon(True)
 plt.ion()
 
 
+def readMPS(MPSf='tensor.txt', Indexf="index.txt", N=16, convert=True):
+
+  indices = []
+  with open(Indexf) as f:
+    for line in f:
+      int_list = [int(x) for x in line.split()]
+      indices.append(int_list)
+
+  MPS = []
+  # initialization of MPS
+  MPS.append(np.zeros((indices[0][2], indices[0][3])))
+  for i in range(1, N - 1):
+    MPS.append(np.zeros((indices[i][2], indices[i][3], indices[i][4])))
+
+  MPS.append(np.zeros((indices[N - 1][2], indices[N - 1][3])))
+
+  #arrays = [np.array(map(float, line.split())) for line in open(MPSf)]
+  arrays = [np.array(line.split()) for line in open(MPSf)]
+  # 1st matrix
+  counter = 0
+  #print(indices)
+  for line in range(indices[0][1]):
+    #    print(line)
+    #    print(arrays[counter].shape)
+    #    print( arrays[counter][0],arrays[counter][1],arrays[counter][2]  )
+    MPS[0][int(arrays[counter][0]) -
+           1, int(arrays[counter][1]) - 1] = float(arrays[counter][2])
+    counter += 1
+
+  counter += 1  # skip hole in the file (Giacomo's format)
+
+  # populating the MPS in the "bullk"
+  for i in range(1, N - 1):
+    for line in range(indices[i][1]):
+      MPS[i][int(arrays[counter][0]) - 1,
+             int(arrays[counter][1]) - 1,
+             int(arrays[counter][2]) - 1] = float(arrays[counter][3])
+      counter += 1
+    counter += 1  # skip hole in the file (Giacomo's format)
+
+  # reading last matrix
+  #print indices
+  for line in range(indices[N - 1][1]):
+    #print( MPS[N-1].shape)
+    #print( arrays[counter][0],arrays[counter][1],arrays[counter][2])
+    MPS[N - 1][int(arrays[counter][0]) -
+               1, int(arrays[counter][1]) - 1] = float(arrays[counter][2])
+    counter += 1
+
+  ## Permute to my format from Giacomos ordering
+  if convert == True:
+    MPS[0] = np.transpose(MPS[0], (1, 0))
+    for i in range(1, N - 1):
+      MPS[i] = np.transpose(MPS[i], [2, 1, 0])
+    #MPS[N-1] = np.transpose(MPS[N-1],(1,0));
+
+  return MPS
 
 
 def convert_to_tf(tensors):
-    """
+  """
     permutes the indices of the tensors from PyTeN ordering to TensorNetwork ordering
     Args: 
          tensors (list of np.ndarrau):  
@@ -34,10 +90,14 @@ def convert_to_tf(tensors):
     Returns:
         list of tf.Tensor objects
     """
-    return [tf.transpose(tf.convert_to_tensor(tensors[n]),(0,2,1)) for n in range(len(tensors))] #the index order of the PyTeN and TensorNetwork MPS is different
+  return [
+      tf.transpose(tf.convert_to_tensor(tensors[n]), (0, 2, 1))
+      for n in range(len(tensors))
+  ]  #the index order of the PyTeN and TensorNetwork MPS is different
 
-def read_and_convert_to_tf(prefix,  N, dtype=tf.float64):
-    """
+
+def read_and_convert_to_tf(prefix, N, dtype=tf.float64):
+  """
     function to read Giacomo's mps data
     Args: 
          prefix (str):  the path + the prefix to  the data; the routine appends
@@ -45,23 +105,39 @@ def read_and_convert_to_tf(prefix,  N, dtype=tf.float64):
     Returns:
         list of tf.Tensor objects
     """
-    #Fixme:  get rid of all the unneccessary transposes
-    tensors = readMPS.readMPS(prefix + '_tensors.txt',prefix + '_index.txt',N=N,convert=True)
-    tensors_new=[]
-    for n in range(len(tensors)):
-        if n ==0:
-            tensors_new.append(np.transpose(np.expand_dims(tensors[n],0),(0,2,1)).astype(dtype.as_numpy_dtype))
-        elif n > 0 and n < len(tensors) - 1:
-            tensors_new.append(np.transpose(tensors[n], (0,2,1)).astype(dtype.as_numpy_dtype))
-        elif n == len(tensors) -1 :
-            tensors_new.append(np.transpose(np.expand_dims(tensors[n],2), (1,2,0)).astype(dtype.as_numpy_dtype))
-            
-    return [tf.transpose(tf.convert_to_tensor(tensors_new[n]),(0,2,1)) for n in range(len(tensors_new))] #the index order of the PyTeN and TensorNetwork MPS is different
+  #Fixme:  get rid of all the unneccessary transposes
+  tensors = readMPS(
+      prefix + '_tensors.txt', prefix + '_index.txt', N=N, convert=True)
+  tensors_new = []
+  for n in range(len(tensors)):
+    if n == 0:
+      tensors_new.append(
+          np.transpose(np.expand_dims(tensors[n], 0),
+                       (0, 2, 1)).astype(dtype.as_numpy_dtype))
+    elif n > 0 and n < len(tensors) - 1:
+      tensors_new.append(
+          np.transpose(tensors[n], (0, 2, 1)).astype(dtype.as_numpy_dtype))
+    elif n == len(tensors) - 1:
+      tensors_new.append(
+          np.transpose(np.expand_dims(tensors[n], 2),
+                       (1, 2, 0)).astype(dtype.as_numpy_dtype))
+
+  return [
+      tf.transpose(tf.convert_to_tensor(tensors_new[n]), (0, 2, 1))
+      for n in range(len(tensors_new))
+  ]  #the index order of the PyTeN and TensorNetwork MPS is different
 
 
 #%matplotlib qt
-def analyze_positivity(mps, samples=None, nsamples=1000, print_out=True,show=True, fignum=0, bins=100, verbose=0):
-    """
+def analyze_positivity(mps,
+                       samples=None,
+                       nsamples=1000,
+                       print_out=True,
+                       show=True,
+                       fignum=0,
+                       bins=100,
+                       verbose=0):
+  """
     analyze the MPS wavefunction by  sampling `nsamples` and measuring the average sign
 
     Returns:
@@ -69,102 +145,114 @@ def analyze_positivity(mps, samples=None, nsamples=1000, print_out=True,show=Tru
 
         for complex dtype: av_real_sign, av_abs_imag_amp
     """
-    if mps.dtype in (tf.float64, tf.float32):
-        if samples is None:
-            samples=mps.generate_samples(nsamples, verbose=verbose)
-        signs, log_amps = mps.get_log_amplitude(samples)
-        log_amps = log_amps.numpy()
-        signs = signs.numpy()
-        if show:
-            plt.figure(fignum)
-            plt.clf()
-            plt.title(r'log-amplitudes; min ($\log$(amps))={0}, max($\log$(amp))={1}'.format(np.round(np.min(log_amps), 2),np.round(np.max(log_amps), 2)))
-            plt.hist(-signs*log_amps, bins=bins)
-            plt.xlabel(r'-Sign(amp) $\log (\vert$amp$\vert)$')
-            plt.ylabel('frequency')
-            plt.tight_layout()            
-            plt.draw()
-            plt.show()
-            plt.pause(0.01)        
-        av_sign = np.mean(signs)
-        av_amp = np.mean(np.exp(log_amps * signs))
-        if print_out:
-            print()
-            print('#############################')
-            print('   all samples >= 0: ',np.all(signs>=0))
-            print('   all samples <= 0: ', np.all(signs<=0))
-            print('   <sgn> = {0}'.format(av_sign))
-            print('   <amp> = {0}'.format(av_amp))                        
-            print('#############################')
-            print()
-        return av_sign, av_amp
+  if mps.dtype in (tf.float64, tf.float32):
+    if samples is None:
+      samples = mps.generate_samples(nsamples, verbose=verbose)
+    signs, log_amps = mps.get_log_amplitude(samples)
+    log_amps = log_amps.numpy()
+    signs = signs.numpy()
+    if show:
+      plt.figure(fignum)
+      plt.clf()
+      plt.title(r'log-amplitudes; min ($\log$(amps))={0}, max($\log$(amp))={1}'
+                .format(
+                    np.round(np.min(log_amps), 2), np.round(
+                        np.max(log_amps), 2)))
+      plt.hist(-signs * log_amps, bins=bins)
+      plt.xlabel(r'-Sign(amp) $\log (\vert$amp$\vert)$')
+      plt.ylabel('frequency')
+      plt.tight_layout()
+      plt.draw()
+      plt.show()
+      plt.pause(0.01)
+    av_sign = np.mean(signs)
+    av_amp = np.mean(np.exp(log_amps * signs))
+    if print_out:
+      print()
+      print('#############################')
+      print('   all samples >= 0: ', np.all(signs >= 0))
+      print('   all samples <= 0: ', np.all(signs <= 0))
+      print('   <sgn> = {0}'.format(av_sign))
+      print('   <amp> = {0}'.format(av_amp))
+      print('#############################')
+      print()
+    return av_sign, av_amp
 
-    if mps.dtype in (tf.complex128, tf.complex64):
-        if samples is None:
-            samples=mps.generate_samples(nsamples, verbose=verbose)
-        phases, log_amps = mps.get_log_amplitude(samples)
-        log_amps = log_amps.numpy()
-        phases = phases.numpy()
-        if show:
-            # plt.figure(fignum)
-            # plt.clf()
-            # plt.title(r'log-amplitudes; min ($\log$(amps))={0}, max($\log$(amp))={1}'.format(np.round(np.min(log_amps), 2),np.round(np.max(log_amps), 2)))
-            # plt.scatter(np.real(phases), np.imag(phases))
-            # plt.xlim([-1.2, 1.2])
-            # plt.ylim([-1.2, 1.2])
-            # plt.draw()
-            # plt.show()
-            # plt.pause(0.01)
-            
-            plt.figure(fignum)
-            plt.clf()            
-            ax = plt.subplot(2,1,1)
-            plt.title(r'log-amplitudes; min ($\log$(amps))={0}, max($\log$(amp))={1}'.format(np.round(np.min(log_amps), 2),np.round(np.max(log_amps), 2)))
-            plt.hist(np.real(np.exp(log_amps)*phases), bins=bins)
-            plt.xlabel(r'$\Re(amp)$')                        
-            plt.ylabel('frequency')
+  if mps.dtype in (tf.complex128, tf.complex64):
+    if samples is None:
+      samples = mps.generate_samples(nsamples, verbose=verbose)
+    phases, log_amps = mps.get_log_amplitude(samples)
+    log_amps = log_amps.numpy()
+    phases = phases.numpy()
+    if show:
+      # plt.figure(fignum)
+      # plt.clf()
+      # plt.title(r'log-amplitudes; min ($\log$(amps))={0}, max($\log$(amp))={1}'.format(np.round(np.min(log_amps), 2),np.round(np.max(log_amps), 2)))
+      # plt.scatter(np.real(phases), np.imag(phases))
+      # plt.xlim([-1.2, 1.2])
+      # plt.ylim([-1.2, 1.2])
+      # plt.draw()
+      # plt.show()
+      # plt.pause(0.01)
 
-            ax = plt.subplot(2,1,2)
-            plt.hist(np.imag(np.exp(log_amps)*phases), bins=bins)
-            plt.xlabel(r'$\Im(amp)$')            
-            plt.ylabel('frequency')
-            plt.tight_layout()
-            plt.draw()
-            plt.show()
-            plt.pause(0.01)        
-        av_real_sign = np.mean(np.sign(np.real(np.exp(log_amps)*phases)))
-        av_real = np.mean(np.real(np.exp(log_amps)*phases))
-        av_imag = np.mean(np.imag(np.exp(log_amps)*phases))
-        av_abs_imag = np.mean(np.abs(np.imag(np.exp(log_amps)*phases)))
-        if print_out:
-            print()
-            print()
-            print('#############################')
-            print('   all samples >= 0: N/A')
-            print('   all samples <= 0: N/A')
-            print('   <Sgn(Re(amp))> = {0}'.format(av_real_sign))
-            print('   <Re(amp)> = {0}'.format(av_real))                
-            print('   <Im(amp)> = {0}'.format(av_imag))
-            print('   <|Im(amp)|> = {0}'.format(av_abs_imag))                
-            print('#############################')
-            print()
-        return av_real_sign, av_abs_imag
+      plt.figure(fignum)
+      plt.clf()
+      ax = plt.subplot(2, 1, 1)
+      plt.title(r'log-amplitudes; min ($\log$(amps))={0}, max($\log$(amp))={1}'
+                .format(
+                    np.round(np.min(log_amps), 2), np.round(
+                        np.max(log_amps), 2)))
+      plt.hist(np.real(np.exp(log_amps) * phases), bins=bins)
+      plt.xlabel(r'$\Re(amp)$')
+      plt.ylabel('frequency')
 
-    
+      ax = plt.subplot(2, 1, 2)
+      plt.hist(np.imag(np.exp(log_amps) * phases), bins=bins)
+      plt.xlabel(r'$\Im(amp)$')
+      plt.ylabel('frequency')
+      plt.tight_layout()
+      plt.draw()
+      plt.show()
+      plt.pause(0.01)
+    av_real_sign = np.mean(np.sign(np.real(np.exp(log_amps) * phases)))
+    av_real = np.mean(np.real(np.exp(log_amps) * phases))
+    av_imag = np.mean(np.imag(np.exp(log_amps) * phases))
+    av_abs_imag = np.mean(np.abs(np.imag(np.exp(log_amps) * phases)))
+    if print_out:
+      print()
+      print()
+      print('#############################')
+      print('   all samples >= 0: N/A')
+      print('   all samples <= 0: N/A')
+      print('   <Sgn(Re(amp))> = {0}'.format(av_real_sign))
+      print('   <Re(amp)> = {0}'.format(av_real))
+      print('   <Im(amp)> = {0}'.format(av_imag))
+      print('   <|Im(amp)|> = {0}'.format(av_abs_imag))
+      print('#############################')
+      print()
+    return av_real_sign, av_abs_imag
 
-def equal_superposition_tf(ds,dtype=tf.float64):
-    """
+
+def equal_superposition_tf(ds, dtype=tf.float64):
+  """
     return mps tensors correpsonding to the equal superposition of all basis states
     """
-    return [np.expand_dims(np.expand_dims(np.ones(ds[n]), 0),2).astype(dtype.as_numpy_dtype) for n in range(len(ds))]
+  return [
+      np.expand_dims(np.expand_dims(np.ones(ds[n]), 0),
+                     2).astype(dtype.as_numpy_dtype) for n in range(len(ds))
+  ]
 
 
-
-def positivize(minimizer, ref_mps=None, num_its=100, num_minimizer_sweeps_even=2, num_minimizer_sweeps_odd=2,
+def positivize(minimizer,
+               ref_mps=None,
+               num_its=100,
+               num_minimizer_sweeps_even=2,
+               num_minimizer_sweeps_odd=2,
                num_minimizer_sweeps_one_body=2,
-               alpha_gates=0.0, sites=None,
+               alpha_gates=0.0,
+               sites=None,
                alpha_ref_mps=1):
-    """
+  """
     runs a positivation using `samples` and `ref_mps`
     one layer of even and one layer of odd unitaries are optimized layer by layer
     see OverlapMinimizer docstring for more information
@@ -180,26 +268,48 @@ def positivize(minimizer, ref_mps=None, num_its=100, num_minimizer_sweeps_even=2
         alpha_ref_mps (float): the three `alpha_` arguments determine the mixing of the update
                                the new gate is given by `alpha_gate` * old_gate + `alpha_samples` * sample_update + `alpha_ref_mps` * ref_mps_udate
     """
-    for it in range(num_its):
-        if num_minimizer_sweeps_one_body > 0:
-            minimizer.minimize_one_body(samples=None, num_sweeps=num_minimizer_sweeps_one_body, ref_mps=ref_mps,  
-                                        alpha_gates=alpha_gates, sites=sites,
-                                        alpha_ref_mps=alpha_ref_mps, verbose=1)
-        if num_minimizer_sweeps_even >0:
-            minimizer.minimize_even(samples=None,num_sweeps=num_minimizer_sweeps_even, ref_mps=ref_mps, 
-                                    alpha_gates=alpha_gates, 
-                                    alpha_ref_mps=alpha_ref_mps, verbose=1)  
-        if num_minimizer_sweeps_odd >0:
-            minimizer.minimize_odd(samples=None, num_sweeps=num_minimizer_sweeps_odd, ref_mps=ref_mps,  
-                                   alpha_gates=alpha_gates, 
-                                   alpha_ref_mps=alpha_ref_mps, verbose=1)
-    return minimizer
+  for it in range(num_its):
+    if num_minimizer_sweeps_one_body > 0:
+      minimizer.minimize_one_body(
+          samples=None,
+          num_sweeps=num_minimizer_sweeps_one_body,
+          ref_mps=ref_mps,
+          alpha_gates=alpha_gates,
+          sites=sites,
+          alpha_ref_mps=alpha_ref_mps,
+          verbose=1)
+    if num_minimizer_sweeps_even > 0:
+      minimizer.minimize_even(
+          samples=None,
+          num_sweeps=num_minimizer_sweeps_even,
+          ref_mps=ref_mps,
+          alpha_gates=alpha_gates,
+          alpha_ref_mps=alpha_ref_mps,
+          verbose=1)
+    if num_minimizer_sweeps_odd > 0:
+      minimizer.minimize_odd(
+          samples=None,
+          num_sweeps=num_minimizer_sweeps_odd,
+          ref_mps=ref_mps,
+          alpha_gates=alpha_gates,
+          alpha_ref_mps=alpha_ref_mps,
+          verbose=1)
+  return minimizer
 
-def positivize_from_self_sampling(minimizer, ref_mps=None, Dmax=20,num_its=100, num_minimizer_sweeps_even=2, num_minimizer_sweeps_odd=2,
-                                  num_minimizer_sweeps_one_body=2, n_samples=1000,
-                                  alpha_gates=0.0, sites=None,
-                                  alpha_samples=1, alpha_ref_mps=1):
-    """
+
+def positivize_from_self_sampling(minimizer,
+                                  ref_mps=None,
+                                  Dmax=20,
+                                  num_its=100,
+                                  num_minimizer_sweeps_even=2,
+                                  num_minimizer_sweeps_odd=2,
+                                  num_minimizer_sweeps_one_body=2,
+                                  n_samples=1000,
+                                  alpha_gates=0.0,
+                                  sites=None,
+                                  alpha_samples=1,
+                                  alpha_ref_mps=1):
+  """
     Args:
         minimizer (OverlapMinimizer):     the overlap minimizer object
         ref_mps (FiniteMPSCentralGauge):               a reference mps 
@@ -216,36 +326,59 @@ def positivize_from_self_sampling(minimizer, ref_mps=None, Dmax=20,num_its=100, 
                                the new gate is given by `alpha_gate` * old_gate + `alpha_samples` * sample_update + `alpha_ref_mps` * ref_mps_udate
     """
 
-    pos_mps, tw = minimizer.absorb_gates(Dmax=Dmax)
-    for it in range(num_its):
-        if num_minimizer_sweeps_one_body > 0:
-            samples = pos_mps.generate_samples(n_samples)
-            minimizer.minimize_one_body(samples=samples, num_sweeps=num_minimizer_sweeps_one_body, ref_mps=ref_mps,  
-                                        alpha_gates=alpha_gates, sites=sites,
-                                        alpha_samples=alpha_samples, alpha_ref_mps=alpha_ref_mps, verbose=1)
-            pos_mps, tw = minimizer.absorb_gates(Dmax=Dmax)
-        
+  pos_mps, tw = minimizer.absorb_gates(Dmax=Dmax)
+  for it in range(num_its):
+    if num_minimizer_sweeps_one_body > 0:
+      samples = pos_mps.generate_samples(n_samples)
+      minimizer.minimize_one_body(
+          samples=samples,
+          num_sweeps=num_minimizer_sweeps_one_body,
+          ref_mps=ref_mps,
+          alpha_gates=alpha_gates,
+          sites=sites,
+          alpha_samples=alpha_samples,
+          alpha_ref_mps=alpha_ref_mps,
+          verbose=1)
+      pos_mps, tw = minimizer.absorb_gates(Dmax=Dmax)
 
-        if num_minimizer_sweeps_even >0:
-            samples = pos_mps.generate_samples(n_samples)
-            minimizer.minimize_even(samples= samples,num_sweeps=num_minimizer_sweeps_even, ref_mps=ref_mps, 
-                                    alpha_gates=alpha_gates, 
-                                    alpha_samples=alpha_samples, alpha_ref_mps=alpha_ref_mps, verbose=1)  
-            pos_mps, tw = minimizer.absorb_gates(Dmax=Dmax)
-        if num_minimizer_sweeps_odd >0:
-            samples = pos_mps.generate_samples(n_samples)
-            minimizer.minimize_odd(samples=samples, num_sweeps=num_minimizer_sweeps_odd, ref_mps=ref_mps,  
-                                   alpha_gates=alpha_gates, 
-                                   alpha_samples=alpha_samples, alpha_ref_mps=alpha_ref_mps, verbose=1)
-            pos_mps, tw = minimizer.absorb_gates(Dmax=Dmax)
-        
-    return minimizer
+    if num_minimizer_sweeps_even > 0:
+      samples = pos_mps.generate_samples(n_samples)
+      minimizer.minimize_even(
+          samples=samples,
+          num_sweeps=num_minimizer_sweeps_even,
+          ref_mps=ref_mps,
+          alpha_gates=alpha_gates,
+          alpha_samples=alpha_samples,
+          alpha_ref_mps=alpha_ref_mps,
+          verbose=1)
+      pos_mps, tw = minimizer.absorb_gates(Dmax=Dmax)
+    if num_minimizer_sweeps_odd > 0:
+      samples = pos_mps.generate_samples(n_samples)
+      minimizer.minimize_odd(
+          samples=samples,
+          num_sweeps=num_minimizer_sweeps_odd,
+          ref_mps=ref_mps,
+          alpha_gates=alpha_gates,
+          alpha_samples=alpha_samples,
+          alpha_ref_mps=alpha_ref_mps,
+          verbose=1)
+      pos_mps, tw = minimizer.absorb_gates(Dmax=Dmax)
 
-def positivize_from_probability_fitting(minimizer, Dmax=20,num_its=100, num_minimizer_sweeps_even=2, num_minimizer_sweeps_odd=2,
-                                        num_minimizer_sweeps_one_body=2, n_samples=1000,
-                                        alpha_gates=0.0, sites=None,
-                                        alpha_samples=1, alpha_ref_mps=1):
-    """
+  return minimizer
+
+
+def positivize_from_probability_fitting(minimizer,
+                                        Dmax=20,
+                                        num_its=100,
+                                        num_minimizer_sweeps_even=2,
+                                        num_minimizer_sweeps_odd=2,
+                                        num_minimizer_sweeps_one_body=2,
+                                        n_samples=1000,
+                                        alpha_gates=0.0,
+                                        sites=None,
+                                        alpha_samples=1,
+                                        alpha_ref_mps=1):
+  """
     Args:
         minimizer (OverlapMinimizer):     the overlap minimizer object
         ref_mps (FiniteMPSCentralGauge):               a reference mps 
@@ -261,24 +394,40 @@ def positivize_from_probability_fitting(minimizer, Dmax=20,num_its=100, num_mini
         alpha_ref_mps (float): the three `alpha_` arguments determine the mixing of the update
                                the new gate is given by `alpha_gate` * old_gate + `alpha_samples` * sample_update + `alpha_ref_mps` * ref_mps_udate
     """
-    for it in range(num_its):
-        if num_minimizer_sweeps_one_body > 0:
-            ref_mps = generate_probability_mps(minimizer.absorb_gates(Dmax)[0])
-            minimizer.minimize_one_body(samples=None, num_sweeps=num_minimizer_sweeps_one_body, ref_mps=ref_mps,  
-                                        alpha_gates=alpha_gates, sites=sites,
-                                        alpha_samples=alpha_samples, alpha_ref_mps=alpha_ref_mps, verbose=1)
+  for it in range(num_its):
+    if num_minimizer_sweeps_one_body > 0:
+      ref_mps = generate_probability_mps(minimizer.absorb_gates(Dmax)[0])
+      minimizer.minimize_one_body(
+          samples=None,
+          num_sweeps=num_minimizer_sweeps_one_body,
+          ref_mps=ref_mps,
+          alpha_gates=alpha_gates,
+          sites=sites,
+          alpha_samples=alpha_samples,
+          alpha_ref_mps=alpha_ref_mps,
+          verbose=1)
 
-        if num_minimizer_sweeps_even >0:
-            ref_mps = generate_probability_mps(minimizer.absorb_gates(Dmax)[0])
-            minimizer.minimize_two_body(samples=None, ref_mps=ref_mps, num_sweeps=num_minimizer_sweeps_even,
-                                        sites=range(0, len(minimizer.mps), 2),
-                                        alpha_gates=alpha_gates, 
-                                        alpha_samples=alpha_samples, alpha_ref_mps=alpha_ref_mps, verbose=1)
-        if num_minimizer_sweeps_odd >0:
-            ref_mps = generate_probability_mps(minimizer.absorb_gates(Dmax)[0])
-            minimizer.minimize_two_body(samples=None, ref_mps=ref_mps, num_sweeps=num_minimizer_sweeps_odd,
-                                        sites=range(1,len(minimizer.mps)-1, 2),
-                                        alpha_gates=alpha_gates, 
-                                        alpha_samples=alpha_samples, alpha_ref_mps=alpha_ref_mps, verbose=1)
-    return minimizer
-
+    if num_minimizer_sweeps_even > 0:
+      ref_mps = generate_probability_mps(minimizer.absorb_gates(Dmax)[0])
+      minimizer.minimize_two_body(
+          samples=None,
+          ref_mps=ref_mps,
+          num_sweeps=num_minimizer_sweeps_even,
+          sites=range(0, len(minimizer.mps), 2),
+          alpha_gates=alpha_gates,
+          alpha_samples=alpha_samples,
+          alpha_ref_mps=alpha_ref_mps,
+          verbose=1)
+    if num_minimizer_sweeps_odd > 0:
+      ref_mps = generate_probability_mps(minimizer.absorb_gates(Dmax)[0])
+      minimizer.minimize_two_body(
+          samples=None,
+          ref_mps=ref_mps,
+          num_sweeps=num_minimizer_sweeps_odd,
+          sites=range(1,
+                      len(minimizer.mps) - 1, 2),
+          alpha_gates=alpha_gates,
+          alpha_samples=alpha_samples,
+          alpha_ref_mps=alpha_ref_mps,
+          verbose=1)
+  return minimizer
