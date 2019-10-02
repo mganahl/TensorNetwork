@@ -179,7 +179,8 @@ if args.num_dmrg_sweeps > 0:
       num_sweeps=args.num_dmrg_sweeps,
       precision=args.dmrg_precision,
       verbose=args.verbosity,
-      ncv=args.ncv)
+      ncv=args.ncv,
+      filename=args.save_mps_filename)
 
   #========================== save mps ====================================
   with open(args.save_mps_filename + '.pickle', 'wb') as f:
