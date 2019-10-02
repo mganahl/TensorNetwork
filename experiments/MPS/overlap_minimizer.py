@@ -4085,7 +4085,8 @@ class TwoBodyStoquastisizer:
               precision=1E-6,
               ncv=40,
               delta=1E-10,
-              verbose=0):
+              verbose=0,
+              filename=None):
     mps.position(0)
     #delete the old left environments
     for site in range(len(mps)):
@@ -4143,5 +4144,8 @@ class TwoBodyStoquastisizer:
         mps._tensors[site] = B
         mps.pos = site
         self.add_unitary_right((site, site + 1), B, normalize=False)
+      if filename:
+        with open(filename + '.pickle', 'wb') as f:
+          pickle.dump(mps, f)
       sweep += 1
     return e
