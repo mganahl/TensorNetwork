@@ -34,6 +34,12 @@ import functools as fct
 from experiments.MPS.matrixproductstates import InfiniteMPSCentralGauge, FiniteMPSCentralGauge
 from typing import Tuple, Optional, Any
 import itertools
+misc_mps.compile_ncon(
+    True)  #compiles ncon calls into graphs; use `True` for better performance
+misc_mps.compile_decomps(
+    True
+)  #compiles matrix decomposition calls into graphs; use `True` for better performance
+
 Tensor = Any
 
 
