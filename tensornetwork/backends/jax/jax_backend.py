@@ -12,9 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 from typing import Any, Optional, Tuple
 from tensornetwork.backends.numpy import numpy_backend
 import numpy
@@ -28,6 +25,7 @@ class JaxBackend(numpy_backend.NumPyBackend):
   def __init__(self, dtype: Optional[numpy.dtype] = None):
     super(JaxBackend, self).__init__()
     try:
+      #pylint: disable=import-outside-toplevel
       import jax
       jax.config.update("jax_enable_x64", True)
     except ImportError:
@@ -36,7 +34,7 @@ class JaxBackend(numpy_backend.NumPyBackend):
     self.jax = jax
     self.np = self.jax.numpy
     self.name = "jax"
-    self.dtype = dtype
+    self._dtype = dtype
 
   def convert_to_tensor(self, tensor: Tensor) -> Tensor:
     result = self.jax.jit(lambda x: x)(tensor)

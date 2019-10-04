@@ -12,9 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import functools
 import operator
@@ -43,7 +40,7 @@ class ShellBackend(base_backend.BaseBackend):
   def __init__(self, dtype: Optional[Type[np.number]] = None):
     super(ShellBackend, self).__init__()
     self.name = "shell"
-    self.dtype = dtype
+    self._dtype = dtype
 
   def tensordot(self, a: Tensor, b: Tensor,
                 axes: Sequence[Sequence[int]]) -> Tensor:

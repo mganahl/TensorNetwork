@@ -12,9 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 from typing import Optional, Any, Sequence, Tuple
 from tensornetwork.backends import base_backend
 from tensornetwork.backends.pytorch import decompositions
@@ -31,13 +28,14 @@ class PyTorchBackend(base_backend.BaseBackend):
   def __init__(self, dtype: Optional[Any] = None):
     super(PyTorchBackend, self).__init__()
     try:
+      #pylint: disable=import-outside-toplevel
       import torch
     except ImportError:
       raise ImportError("PyTorch not installed, please switch to a different "
                         "backend or install PyTorch.")
     self.torch = torch
     self.name = "pytorch"
-    self.dtype = dtype
+    self._dtype = dtype
 
   def tensordot(self, a: Tensor, b: Tensor, axes: Sequence[Sequence[int]]):
     return self.torch.tensordot(a, b, dims=axes)

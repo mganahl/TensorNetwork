@@ -1,3 +1,4 @@
+# pytype: skip-file
 # Copyright 2019 The TensorNetwork Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,9 +14,6 @@
 # limitations under the License.
 """Tests for tensornetwork.backends.shell.shell_backend"""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import numpy as np
 from tensornetwork.backends.shell import shell_backend

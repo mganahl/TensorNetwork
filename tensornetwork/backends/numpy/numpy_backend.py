@@ -12,9 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 from typing import Optional, Any, Sequence, Tuple
 from tensornetwork.backends import base_backend
 import numpy
@@ -30,7 +27,7 @@ class NumPyBackend(base_backend.BaseBackend):
     self.np = numpy
     self.decompositions = decompositions
     self.name = "numpy"
-    self.dtype = dtype
+    self._dtype = dtype
 
   def tensordot(self, a: Tensor, b: Tensor, axes: Sequence[Sequence[int]]):
     return self.np.tensordot(a, b, axes)

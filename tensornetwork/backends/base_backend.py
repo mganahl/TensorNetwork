@@ -12,9 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 from typing import Optional, Sequence, Tuple, Any, Union, Type
 import numpy as np
@@ -27,6 +24,15 @@ class BaseBackend:
 
   def __init__(self):
     self.name = 'base backend'
+
+  @property
+  def dtype(self):
+    return self._dtype
+
+  @dtype.setter
+  def dtype(self, dtype):
+    #pylint: disable=attribute-defined-outside-init
+    self._dtype = dtype
 
   def tensordot(self, a: Tensor, b: Tensor,
                 axes: Sequence[Sequence[int]]) -> Tensor:
