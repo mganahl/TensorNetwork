@@ -401,14 +401,15 @@ class BaseNode(ABC):
     self._signature = signature
 
   def disable(self):
-    if self.is_disabled:
-      raise ValueError('Node {} is already disabled'.format(self.name))
-    if self.network and self in self.network.nodes_set:
-      raise ValueError(
-          'Node {} is part of a network. Disabelling not allowed'.format(
-              self.name))
+    return
+    # if self.is_disabled:
+    #   raise ValueError('Node {} is already disabled'.format(self.name))
+    # if self.network and self in self.network.nodes_set:
+    #   raise ValueError(
+    #       'Node {} is part of a network. Disabelling not allowed'.format(
+    #           self.name))
 
-    self.is_disabled = True
+    # self.is_disabled = True
 
   @classmethod
   @abstractmethod

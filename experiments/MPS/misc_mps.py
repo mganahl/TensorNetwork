@@ -25,22 +25,26 @@ import tensornetwork as tn
 from scipy.sparse.linalg import LinearOperator, lgmres, eigs
 import functools
 tf_ncon = functools.partial(ncon_tn, backend="tensorflow")
-ncon_defuned = tf.contrib.eager.defun(tf_ncon, autograph=False)
+ncon_defuned = tf.function(
+    tf_ncon, autograph=False, experimental_relax_shapes=True)
 
 
 def haar_random_unitary(shape, dtype=tf.float64):
   if dtype in (tf.float32, tf.float64):
     mat = np.random.random_sample(shape) - 0.5
-  elif dtype  == tf.complex128:
-    mat = np.random.random_sample(shape) - 0.5 + 1j*(np.random.random_sample(shape) - 0.5)
+  elif dtype == tf.complex128:
+    mat = np.random.random_sample(shape) - 0.5 + 1j * (
+        np.random.random_sample(shape) - 0.5)
   else:
-    raise TypeError('only (tf.float32m, tf.float64, tf.complex128) types are allowed as arguments to haar_random_unitary')
+    raise TypeError(
+        'only (tf.float32m, tf.float64, tf.complex128) types are allowed as arguments to haar_random_unitary'
+    )
   Q, R = np.linalg.qr(mat)
   diagr = np.diag(R)
-  Lambda = np.diag(diagr/np.abs(diagr))
+  Lambda = np.diag(diagr / np.abs(diagr))
   return tf.convert_to_tensor(Q.dot(Lambda))
 
-  
+
 def transfer_op(As, Bs, direction, x):
   """
     (mixed) transfer operator for a list of mps tensors
@@ -56,17 +60,20 @@ def transfer_op(As, Bs, direction, x):
 
   if direction in ('l', 'left', 1):
     for n in range(len(As)):
-      x = ncon([x, As[n], tf.conj(Bs[n])], [(1, 2), (1, 3, -1), (2, 3, -2)])
+      x = ncon([x, As[n], tf.math.conj(Bs[n])], [(1, 2), (1, 3, -1),
+                                                 (2, 3, -2)])
   elif direction in ('r', 'right', -1):
     for n in reversed(range(len(As))):
-      x = ncon([x, As[n], tf.conj(Bs[n])], [(1, 2), (-1, 3, 1), (-2, 3, 2)])
+      x = ncon([x, As[n], tf.math.conj(Bs[n])], [(1, 2), (-1, 3, 1),
+                                                 (-2, 3, 2)])
   else:
     raise ValueError("Invalid direction: {}".format(direction))
 
   return x
 
 
-transfer_op_defuned = tf.contrib.eager.defun(transfer_op, autograph=False)
+transfer_op_defuned = tf.function(
+    transfer_op, autograph=False, experimental_relax_shapes=True)
 
 
 def add_layer(B, mps_tensor, mpo, conj_mps_tensor, direction):
@@ -89,16 +96,17 @@ def add_layer(B, mps_tensor, mpo, conj_mps_tensor, direction):
     """
   if direction in ('l', 'left', 1):
     return ncon(
-        [B, mps_tensor, mpo, tf.conj(conj_mps_tensor)],
+        [B, mps_tensor, mpo, tf.math.conj(conj_mps_tensor)],
         [[1, 4, 3], [1, 2, -1], [3, -3, 5, 2], [4, 5, -2]])
 
   if direction in ('r', 'right', -1):
     return ncon(
-        [B, mps_tensor, mpo, tf.conj(conj_mps_tensor)],
+        [B, mps_tensor, mpo, tf.math.conj(conj_mps_tensor)],
         [[1, 4, 3], [-1, 2, 1], [-3, 3, 5, 2], [-2, 5, 4]])
 
 
-add_layer_defuned = tf.contrib.eager.defun(add_layer, autograph=False)
+add_layer_defuned = tf.function(
+    add_layer, autograph=False, experimental_relax_shapes=True)
 
 
 def one_minus_pseudo_unitcell_transfer_op(direction, mps, left_dominant,
@@ -215,7 +223,7 @@ def compute_steady_state_Hamiltonian_GMRES(direction,
     L = ncon([
         mps.get_tensor(-1),
         mpo.get_boundary_mpo('left'),
-        tf.conj(mps.get_tensor(-1))
+        tf.math.conj(mps.get_tensor(-1))
     ], [[1, 2, -1], [-3, 3, 2], [1, 3, -2]])
     for n in range(len(mps)):
       L = add_layer(
@@ -245,7 +253,7 @@ def compute_steady_state_Hamiltonian_GMRES(direction,
     R = ncon([
         mps.get_tensor(0),
         mpo.get_boundary_mpo('right'),
-        tf.conj(mps.get_tensor(0))
+        tf.math.conj(mps.get_tensor(0))
     ], [[-1, 2, 1], [-3, 3, 2], [-2, 3, 1]])
     for n in reversed(range(len(mps))):
       R = add_layer(
@@ -322,7 +330,7 @@ def compute_Hamiltonian_environments(mps,
       mps,
       mpo,
       left_dominant=tf.diag(tf.ones(mps.D[-1], dtype=mps.dtype)),
-      right_dominant=ncon([mps.mat, tf.conj(mps.mat)], [[-1, 1], [-2, 1]]),
+      right_dominant=ncon([mps.mat, tf.math.conj(mps.mat)], [[-1, 1], [-2, 1]]),
       precision=precision,
       nmax=nmax)
   rmps = mps.get_right_orthogonal_imps(
@@ -337,7 +345,7 @@ def compute_Hamiltonian_environments(mps,
       rmps,
       mpo,
       right_dominant=tf.diag(tf.ones(mps.D[0], dtype=mps.dtype)),
-      left_dominant=ncon([mps.mat, tf.conj(mps.mat)], [[1, -1], [1, -2]]),
+      left_dominant=ncon([mps.mat, tf.math.conj(mps.mat)], [[1, -1], [1, -2]]),
       precision=precision,
       nmax=nmax)
   return lb, rb, hl, hr
@@ -390,19 +398,22 @@ def prepare_tensor_QR(tensor, direction):
 
   if direction in ('r', 'right', -1):
     temp = tf.reshape(tensor, [l1, d * l2])
-    q, r = tf.linalg.qr(tf.transpose(tf.conj(temp)))
+    q, r = tf.linalg.qr(tf.transpose(tf.math.conj(temp)))
     Z = tf.linalg.norm(r)
     r /= Z
     size1, size2 = tf.unstack(tf.shape(q))
-    out = tf.reshape(tf.transpose(tf.conj(q)), [size2, d, l2])
+    out = tf.reshape(tf.transpose(tf.math.conj(q)), [size2, d, l2])
 
-    return tf.transpose(tf.conj(r)), out, Z
+    return tf.transpose(tf.math.conj(r)), out, Z
 
 
-prepare_tensor_QR_defuned = tf.contrib.eager.defun(prepare_tensor_QR, autograph=False)
+prepare_tensor_QR_defuned = tf.function(
+    prepare_tensor_QR, autograph=False, experimental_relax_shapes=True)
 
-def prepare_tensor_SVD(tensor, direction, D=None, thresh=1E-32, normalize=False):
-    """
+
+def prepare_tensor_SVD(tensor, direction, D=None, thresh=1E-32,
+                       normalize=False):
+  """
     prepares and truncates an mps tensor using svd
     Parameters:
     ---------------------
@@ -432,29 +443,35 @@ def prepare_tensor_SVD(tensor, direction, D=None, thresh=1E-32, normalize=False)
 
     """
 
-    assert (direction != 0), 'do NOT use direction=0!'
-    [l1, l2, d] = tensor.shape
-    if direction in (1, 'l', 'left'):
-        net = tn.TensorNetwork("tensorflow")
-        node = net.add_node(tensor)
-        u_node, s_node, v_node, tw = net.split_node_full_svd(node, [node[0], node[1]], [node[2]], max_singular_values=D, max_truncation_err=thresh)
-        Z = tf.linalg.norm(s_node.tensor)
-        if normalize:
-          s_node.tensor /= Z
-        return u_node.tensor, s_node.tensor, v_node.tensor, Z, tw
+  assert (direction != 0), 'do NOT use direction=0!'
+  [l1, l2, d] = tensor.shape
+  if direction in (1, 'l', 'left'):
+    net = tn.TensorNetwork("tensorflow")
+    node = net.add_node(tensor)
+    u_node, s_node, v_node, tw = net.split_node_full_svd(
+        node, [node[0], node[1]], [node[2]],
+        max_singular_values=D,
+        max_truncation_err=thresh)
+    Z = tf.linalg.norm(s_node.tensor)
+    if normalize:
+      s_node.tensor /= Z
+    return u_node.tensor, s_node.tensor, v_node.tensor, Z, tw
 
-    if direction in (-1, 'r', 'right'):
-        net = tn.TensorNetwork("tensorflow")
-        node = net.add_node(tensor)
-        u_node, s_node, v_node, tw = net.split_node_full_svd(node, [node[0]], [node[1], node[2]], max_singular_values=D, max_truncation_err=thresh)
-        Z = tf.linalg.norm(s_node.tensor)
-        if normalize:        
-          s_node.tensor /= Z
-        return u_node.tensor, s_node.tensor, v_node.tensor, Z, tw
+  if direction in (-1, 'r', 'right'):
+    net = tn.TensorNetwork("tensorflow")
+    node = net.add_node(tensor)
+    u_node, s_node, v_node, tw = net.split_node_full_svd(
+        node, [node[0]], [node[1], node[2]],
+        max_singular_values=D,
+        max_truncation_err=thresh)
+    Z = tf.linalg.norm(s_node.tensor)
+    if normalize:
+      s_node.tensor /= Z
+    return u_node.tensor, s_node.tensor, v_node.tensor, Z, tw
 
 
-
-prepare_tensor_SVD_defuned = tf.contrib.eager.defun(prepare_tensor_SVD, autograph=False)
+prepare_tensor_SVD_defuned = tf.function(
+    prepare_tensor_SVD, autograph=False, experimental_relax_shapes=True)
 
 
 def apply_2site_schmidt_canonical(op,
@@ -540,8 +557,10 @@ def apply_2site_schmidt_canonical(op,
   return G1_new, L1_new, G2_new, nrm, trunc_err
 
 
-apply_2site_schmidt_canonical_defuned = tf.contrib.eager.defun(
-    apply_2site_schmidt_canonical, autograph=False)
+apply_2site_schmidt_canonical_defuned = tf.function(
+    apply_2site_schmidt_canonical,
+    autograph=False,
+    experimental_relax_shapes=True)
 
 
 def apply_2site_generic(op, A1, A2, max_bond_dim=None, auto_trunc_max_err=0.0):
@@ -586,10 +605,11 @@ def apply_2site_generic(op, A1, A2, max_bond_dim=None, auto_trunc_max_err=0.0):
   return nA1_new.tensor, nC.tensor, nA2_new.tensor, trunc_err
 
 
-apply_2site_generic_defuned = tf.contrib.eager.defun(apply_2site_generic, autograph=False)
+apply_2site_generic_defuned = tf.function(
+    apply_2site_generic, autograph=False, experimental_relax_shapes=True)
 
 
-@tf.contrib.eager.defun
+@tf.function
 def TMeigs_power_method(tensors,
                         direction,
                         init=None,
@@ -824,7 +844,7 @@ def initialize_mps_tensors(initializer_function, D, d, dtype, *args, **kwargs):
     ]
 
 
-#NOTE: this one can't be @tf.contrib.eager.defun'ed
+#NOTE: this one can't be @tf.function'ed
 def restore_helper(tensors,
                    init=None,
                    precision=1E-12,
@@ -867,7 +887,7 @@ def restore_helper(tensors,
   As[0] /= sqrteta
 
   l = l / tf.trace(l)
-  l = (l + tf.conj(tf.transpose(l))) / 2.0
+  l = (l + tf.math.conj(tf.transpose(l))) / 2.0
 
   eigvals_left, u_left = tf.linalg.eigh(l)
 
@@ -881,7 +901,7 @@ def restore_helper(tensors,
 
   y = ncon([u_left, tf.diag(tf.sqrt(eigvals_left))], [[-2, 1], [1, -1]])
   invy = ncon([tf.diag(tf.sqrt(inveigvals_left)),
-               tf.conj(u_left)], [[-2, 1], [-1, 1]])
+               tf.math.conj(u_left)], [[-2, 1], [-1, 1]])
 
   eta, r = TMeigs(
       tensors=As,
@@ -893,7 +913,7 @@ def restore_helper(tensors,
       numeig=numeig)
 
   r = r / tf.trace(r)
-  r = (r + tf.conj(tf.transpose(r))) / 2.0
+  r = (r + tf.math.conj(tf.transpose(r))) / 2.0
 
   eigvals_right, u_right = tf.linalg.eigh(r)
 
@@ -907,12 +927,12 @@ def restore_helper(tensors,
 
   x = ncon([u_right, tf.diag(tf.sqrt(eigvals_right))], [[-1, 1], [1, -2]])
   invx = ncon([tf.diag(tf.sqrt(inveigvals_right)),
-               tf.conj(u_right)], [[-1, 1], [-2, 1]])
+               tf.math.conj(u_right)], [[-1, 1], [-2, 1]])
   lam, U, V = tf.linalg.svd(ncon([y, x], [[-1, 1], [1, -2]]))
   lam = tf.cast(lam, dtype)
 
   As[0] = ncon(  #absorb everything on the left end 
-      [tf.diag(lam), tf.conj(V), invx, As[0]],
+      [tf.diag(lam), tf.math.conj(V), invx, As[0]],
       [[-1, 1], [2, 1], [2, 3], [3, -2, -3]])
   As[-1] = ncon([As[-1], invy, U], [[-1, -2, 1], [1, 2], [2, -3]])
 
@@ -921,7 +941,7 @@ def restore_helper(tensors,
     As[n] = tensor
     As[n + 1] = ncon([mat, As[n + 1]], [[-1, 1], [1, -2, -3]])
 
-  Z = ncon([As[-1], tf.conj(As[-1])], [[1, 2, 3], [1, 2, 3]]) / tf.cast(
+  Z = ncon([As[-1], tf.math.conj(As[-1])], [[1, 2, 3], [1, 2, 3]]) / tf.cast(
       As[-1].shape[2], dtype)
   As[-1] /= tf.sqrt(Z)
   lam = lam / tf.linalg.norm(lam)
@@ -932,7 +952,7 @@ def restore_helper(tensors,
   return As, mat, connector, right_mat
 
 
-@tf.contrib.eager.defun(autograph=False)
+@tf.function(autograph=False)
 def restore_helper_power_method(tensors,
                                 init=None,
                                 precision=1E-12,
@@ -1015,7 +1035,7 @@ def restore_helper_power_method(tensors,
   As[0] /= sqrteta
 
   l = l / tf.trace(l)
-  l = (l + tf.conj(tf.transpose(l))) / 2.0
+  l = (l + tf.math.conj(tf.transpose(l))) / 2.0
 
   eigvals_left, u_left = tf.linalg.eigh(l)
 
@@ -1029,10 +1049,10 @@ def restore_helper_power_method(tensors,
 
   y = ncon([u_left, tf.diag(tf.sqrt(eigvals_left))], [[-2, 1], [1, -1]])
   invy = ncon([tf.diag(tf.sqrt(inveigvals_left)),
-               tf.conj(u_left)], [[-2, 1], [-1, 1]])
+               tf.math.conj(u_left)], [[-2, 1], [-1, 1]])
 
   r = r / tf.trace(r)
-  r = (r + tf.conj(tf.transpose(r))) / 2.0
+  r = (r + tf.math.conj(tf.transpose(r))) / 2.0
 
   eigvals_right, u_right = tf.linalg.eigh(r)
 
@@ -1046,12 +1066,12 @@ def restore_helper_power_method(tensors,
 
   x = ncon([u_right, tf.diag(tf.sqrt(eigvals_right))], [[-1, 1], [1, -2]])
   invx = ncon([tf.diag(tf.sqrt(inveigvals_right)),
-               tf.conj(u_right)], [[-1, 1], [-2, 1]])
+               tf.math.conj(u_right)], [[-1, 1], [-2, 1]])
   lam, U, V = tf.linalg.svd(ncon([y, x], [[-1, 1], [1, -2]]))
   lam = tf.cast(lam, dtype)
 
   As[0] = ncon(  #absorb everything on the left end 
-      [tf.diag(lam), tf.conj(V), invx, As[0]],
+      [tf.diag(lam), tf.math.conj(V), invx, As[0]],
       [[-1, 1], [2, 1], [2, 3], [3, -2, -3]])
   As[-1] = ncon([As[-1], invy, U], [[-1, -2, 1], [1, 2], [2, -3]])
 
@@ -1060,7 +1080,7 @@ def restore_helper_power_method(tensors,
     As[n] = tensor
     As[n + 1] = ncon([mat, As[n + 1]], [[-1, 1], [1, -2, -3]])
 
-  Z = ncon([As[-1], tf.conj(As[-1])], [[1, 2, 3], [1, 2, 3]]) / tf.cast(
+  Z = ncon([As[-1], tf.math.conj(As[-1])], [[1, 2, 3], [1, 2, 3]]) / tf.cast(
       As[-1].shape[2], dtype)
   As[-1] /= tf.sqrt(Z)
   lam = lam / tf.linalg.norm(lam)

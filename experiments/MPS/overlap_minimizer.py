@@ -20,6 +20,7 @@ import copy
 import pickle
 import time
 import tensornetwork as tn
+tn.set_default_backend('tensorflow')
 import numpy as np
 import tensorflow as tf
 import experiments.MPS_classifier.batchtensornetwork as btn
@@ -123,16 +124,15 @@ def block_MPO(mpo, block_length, backend='tensorflow'):
   assert len(mpo) % block_length == 0
   tensors = []
   for n in range(0, len(mpo), block_length):
-    net = tn.TensorNetwork(backend=backend)
-    nodes = [net.add_node(mpo[n + b]) for b in range(block_length)]
-    for n in range(len(nodes) - 1):
-      nodes[n][1] ^ nodes[n + 1][0]
-    bottom_edges = [n[2] for n in nodes]
-    top_edges = [n[3] for n in nodes]
+    nodes = [tn.Node(mpo[n + b], backend=backend) for b in range(block_length)]
+    for m in range(len(nodes) - 1):
+      nodes[m][1] ^ nodes[m + 1][0]
+    bottom_edges = [m[2] for m in nodes]
+    top_edges = [m[3] for m in nodes]
     out_edges = [nodes[0][0]] + [nodes[-1][1]] + bottom_edges + top_edges
     node = nodes[0]
-    for n in range(1, len(nodes)):
-      node = node @ nodes[n]
+    for m in range(1, len(nodes)):
+      node = node @ nodes[m]
     node.reorder_edges(out_edges)
     M1, M2 = node.shape[0], node.shape[1]
 
@@ -150,10 +150,10 @@ def generate_probability_mps(mps):
                            dtype=mps.dtype.as_numpy_dtype)
     for n in range(ds[site]):
       copy_tensor[n, n, n] = 1.0
-      tensor = misc_mps.ncon(
-          [mps.get_tensor(site),
-           tf.conj(mps.get_tensor(site)), copy_tensor],
-          [[-1, 1, -4], [-2, 2, -5], [1, 2, -3]])
+      tensor = misc_mps.ncon([
+          mps.get_tensor(site),
+          tf.math.conj(mps.get_tensor(site)), copy_tensor
+      ], [[-1, 1, -4], [-2, 2, -5], [1, 2, -3]])
       tmp = tf.reshape(tensor, (Ds[site]**2, ds[site], Ds[site + 1]**2))
     tensors.append(tmp)
   return MPS.FiniteMPSCentralGauge(tensors)
@@ -189,12 +189,12 @@ def generate_basis(N):
 def apply_random_positive_gates(mps):
   for site in range(0, len(mps) - 1, 2):
     mps.apply_2site(
-        tf.random_uniform(
+        tf.random.uniform(
             shape=[mps.d[site], mps.d[site + 1], mps.d[site], mps.d[site + 1]],
             dtype=mps.dtype), site)
   for site in range(1, len(mps) - 2, 2):
     mps.apply_2site(
-        tf.random_uniform(
+        tf.random.uniform(
             shape=[mps.d[site], mps.d[site + 1], mps.d[site], mps.d[site + 1]],
             dtype=mps.dtype), site)
   mps.position(0)
@@ -211,9 +211,9 @@ def get_gate_from_generator(g, shape):
     
     """
   if g.dtype in (tf.complex128, tf.complex64):
-    return tf.reshape(tf.linalg.expm(g - tf.conj(tf.transpose(g))), shape)
+    return tf.reshape(tf.linalg.expm(g - tf.math.conj(tf.transpose(g))), shape)
   elif g.dtype in (tf.float32, tf.float64):
-    return tf.reshape(tf.linalg.expm(g - tf.conj(tf.transpose(g))), shape)
+    return tf.reshape(tf.linalg.expm(g - tf.math.conj(tf.transpose(g))), shape)
 
 
 def get_generator_from_gate(g):
@@ -236,7 +236,7 @@ def get_generator_from_gate(g):
         tf.complex(
             tf.reshape(g, (dout, din)),
             tf.zeros(shape=[dout, din], dtype=g.dtype)))
-    return (matrix - tf.transpose(tf.conj(matrix))) / 2
+    return (matrix - tf.transpose(tf.math.conj(matrix))) / 2
 
 
 def get_generators_from_gates(gates):
@@ -248,18 +248,18 @@ def randomize_even_two_body_gates(gates, noise):
   for s in range(0, len(gates), 2):
     if gates[(s, s + 1)].dtype in (tf.complex128, tf.complex64):
       gates[(s, s + 1)] += tf.complex(
-          tf.random_uniform(
+          tf.random.uniform(
               shape=gates[(s, s + 1)].shape,
               dtype=gates[(s, s + 1)].dtype.real_dtype,
               minval=-noise / 2,
               maxval=noise / 2),
-          tf.random_uniform(
+          tf.random.uniform(
               shape=gates[(s, s + 1)].shape,
               dtype=gates[(s, s + 1)].dtype.real_dtype,
               minval=-noise / 2,
               maxval=noise / 2))
     elif gates[(s, s + 1)].dtype in (tf.float32, tf.float64):
-      gates[(s, s + 1)] += tf.random_uniform(
+      gates[(s, s + 1)] += tf.random.uniform(
           shape=gates[(s, s + 1)].shape,
           dtype=gates[(s, s + 1)].dtype.real_dtype,
           minval=-noise / 2,
@@ -274,18 +274,18 @@ def randomize_odd_two_body_gates(gates, noise):
     if gates[(s, s + 1)].dtype in (tf.complex128, tf.complex64):
 
       gates[(s, s + 1)] += tf.complex(
-          tf.random_uniform(
+          tf.random.uniform(
               shape=gates[(s, s + 1)].shape,
               dtype=gates[(s, s + 1)].dtype.real_dtype,
               minval=-noise / 2,
               maxval=noise / 2),
-          tf.random_uniform(
+          tf.random.uniform(
               shape=gates[(s, s + 1)].shape,
               dtype=gates[(s, s + 1)].dtype.real_dtype,
               minval=-noise / 2,
               maxval=noise / 2))
     elif gates[(s, s + 1)].dtype in (tf.float32, tf.float64):
-      gates[(s, s + 1)] += tf.random_uniform(
+      gates[(s, s + 1)] += tf.random.uniform(
           shape=gates[(s, s + 1)].shape,
           dtype=gates[(s, s + 1)].dtype.real_dtype,
           minval=-noise / 2,
@@ -298,18 +298,18 @@ def randomize_gates(gates, noise):
   for k in gates.keys():
     if gates[k].dtype in (tf.complex128, tf.complex64):
       gates[k] += tf.complex(
-          tf.random_uniform(
+          tf.random.uniform(
               shape=gates[k].shape,
               dtype=gates[k].dtype.real_dtype,
               minval=-noise / 2,
               maxval=noise / 2),
-          tf.random_uniform(
+          tf.random.uniform(
               shape=gates[k].shape,
               dtype=gates[k].dtype.real_dtype,
               minval=-noise / 2,
               maxval=noise / 2))
     elif gates[k].dtype in (tf.float32, tf.float64):
-      gates[k] += tf.random_uniform(
+      gates[k] += tf.random.uniform(
           shape=gates[k].shape,
           dtype=gates[k].dtype.real_dtype,
           minval=-noise / 2,
@@ -343,7 +343,7 @@ def initialize_even_two_body_gates(ds, dtype, which, noise=0.0):
         two_body_gates[(site, site + 1)] = tf.reshape(
             tf.complex(
                 tf.eye(ds[site] * ds[site + 1], dtype=dtype.real_dtype),
-                noise * tf.random_uniform(
+                noise * tf.random.uniform(
                     shape=[ds[site] * ds[site + 1], ds[site] * ds[site + 1]],
                     dtype=dtype.real_dtype,
                     minval=-1,
@@ -383,13 +383,13 @@ def initialize_odd_two_body_gates(ds, dtype, which, noise=0.0):
     for site in range(1, len(ds) - 2, 2):
       if dtype in (tf.float32, tf.float64):
         two_body_gates[(site, site+1)] = tf.reshape(tf.eye(ds[site]*ds[site+1], dtype=dtype) + \
-                                                         noise * tf.random_uniform(shape = [ds[site]*ds[site+1], ds[site]*ds[site+1]], dtype=dtype),
+                                                         noise * tf.random.uniform(shape = [ds[site]*ds[site+1], ds[site]*ds[site+1]], dtype=dtype),
                                                          (ds[site], ds[site+1], ds[site], ds[site+1]))
       elif dtype in (tf.complex128, tf.complex64):
         two_body_gates[(site, site + 1)] = tf.reshape(
             tf.complex(
                 tf.eye(ds[site] * ds[site + 1], dtype=dtype.real_dtype),
-                noise * tf.random_uniform(
+                noise * tf.random.uniform(
                     shape=[ds[site] * ds[site + 1], ds[site] * ds[site + 1]],
                     dtype=dtype.real_dtype,
                     minval=-1,
@@ -427,12 +427,12 @@ def initialize_one_body_gates(ds, dtype, which, noise=0.0):
   if which in ('i', 'identities', 'eye', 'e'):
     if dtype in (tf.float32, tf.float64):
       one_body_gates = {site: tf.eye(ds[site], dtype=dtype) + \
-                             noise * tf.random_uniform(shape=[ds[site], ds[site]], dtype=dtype.real_dtype, minval=-1, maxval=1)
+                             noise * tf.random.uniform(shape=[ds[site], ds[site]], dtype=dtype.real_dtype, minval=-1, maxval=1)
                              for site in range(0,len(ds))}
     elif dtype in (tf.complex128, tf.complex64):
       one_body_gates = {site: tf.complex(tf.eye(ds[site], dtype=dtype.real_dtype) + \
-                                              noise * tf.random_uniform(shape=[ds[site], ds[site]], dtype=dtype.real_dtype, minval=-1, maxval=1),
-                                              noise * tf.random_uniform(shape=[ds[site], ds[site]], dtype=dtype.real_dtype, minval=-1, maxval=1))
+                                              noise * tf.random.uniform(shape=[ds[site], ds[site]], dtype=dtype.real_dtype, minval=-1, maxval=1),
+                                              noise * tf.random.uniform(shape=[ds[site], ds[site]], dtype=dtype.real_dtype, minval=-1, maxval=1))
                              for site in range(0,len(ds))}
   elif which in ('h', 'haar'):
     one_body_gates = {
@@ -511,19 +511,19 @@ def initialize_even_two_body_generators(ds, dtype, which='identities'):
   elif which in ('r', 'random'):
     for site in range(0, len(ds) - 1, 2):
       if dtype in (tf.float32, tf.float64):
-        two_body_generators[(site, site + 1)] = tf.random_uniform(
+        two_body_generators[(site, site + 1)] = tf.random.uniform(
             shape=(ds[site] * ds[site + 1], ds[site] * ds[site + 1]),
             dtype=dtype,
             minval=-0.1,
             maxval=0.1)
       elif dtype in (tf.complex128, tf.complex64):
         two_body_generators[(site, site + 1)] = tf.complex(
-            tf.random_uniform(
+            tf.random.uniform(
                 shape=(ds[site] * ds[site + 1], ds[site] * ds[site + 1]),
                 dtype=dtype.real_dtype,
                 minval=-0.1,
                 maxval=0.1),
-            tf.random_uniform(
+            tf.random.uniform(
                 shape=(ds[site] * ds[site + 1], ds[site] * ds[site + 1]),
                 dtype=dtype.real_dtype,
                 minval=-0.1,
@@ -565,19 +565,19 @@ def initialize_odd_two_body_generators(ds, dtype, which='identities'):
   elif which in ('r', 'random'):
     for site in range(1, len(ds) - 2, 2):
       if dtype in (tf.float32, tf.float64):
-        two_body_generators[(site, site + 1)] = tf.random_uniform(
+        two_body_generators[(site, site + 1)] = tf.random.uniform(
             shape=(ds[site] * ds[site + 1], ds[site] * ds[site + 1]),
             dtype=dtype,
             minval=-0.1,
             maxval=0.1)
       elif dtype in (tf.complex128, tf.complex64):
         two_body_generators[(site, site + 1)] = tf.complex(
-            tf.random_uniform(
+            tf.random.uniform(
                 shape=(ds[site] * ds[site + 1], ds[site] * ds[site + 1]),
                 dtype=dtype.real_dtype,
                 minval=-0.1,
                 maxval=0.1),
-            tf.random_uniform(
+            tf.random.uniform(
                 shape=(ds[site] * ds[site + 1], ds[site] * ds[site + 1]),
                 dtype=dtype.real_dtype,
                 minval=-0.1,
@@ -618,7 +618,7 @@ def initialize_one_body_generators(ds, dtype, which='identities'):
   elif which in ('r', 'random'):
     if dtype in (tf.float32, tf.float64):
       one_body_generators = {
-          site: tf.random_uniform(
+          site: tf.random.uniform(
               shape=(ds[site], ds[site]),
               dtype=dtype.real_dtype,
               minval=-0.1,
@@ -627,12 +627,12 @@ def initialize_one_body_generators(ds, dtype, which='identities'):
     elif dtype in (tf.float64, tf.complex128):
       one_body_generators = {
           site: tf.complex(
-              tf.random_uniform(
+              tf.random.uniform(
                   shape=(ds[site], ds[site]),
                   dtype=dtype.real_dtype,
                   minval=-0.1,
                   maxval=0.1),
-              tf.random_uniform(
+              tf.random.uniform(
                   shape=(ds[site], ds[site]),
                   dtype=dtype.real_dtype,
                   minval=-0.1,
@@ -1345,17 +1345,20 @@ class OverlapMaximizer:
     if site == (len(mps) - 1):
       right_envs[site - 1] = misc_mps.ncon([
           tensor,
-          tf.conj(conj_mps.get_tensor(site)), two_body_gates[(site - 1, site)]
+          tf.math.conj(conj_mps.get_tensor(site)), two_body_gates[(site - 1,
+                                                                   site)]
       ], [[-1, 2, 1], [-2, 3, 1], [-4, 3, -3, 2]])
     elif (site < len(mps) - 1) and (site % 2 == 0):
       right_envs[site - 1] = misc_mps.ncon([
           right_envs[site], tensor,
-          tf.conj(conj_mps.get_tensor(site)), two_body_gates[(site - 1, site)]
+          tf.math.conj(conj_mps.get_tensor(site)), two_body_gates[(site - 1,
+                                                                   site)]
       ], [[1, 3, 2, 5], [-1, 2, 1], [-2, 4, 3], [-4, 4, -3, 5]])
     elif (site < len(mps) - 1) and (site % 2 == 1):
       right_envs[site - 1] = misc_mps.ncon([
           right_envs[site], tensor,
-          tf.conj(conj_mps.get_tensor(site)), two_body_gates[(site - 1, site)]
+          tf.math.conj(conj_mps.get_tensor(site)), two_body_gates[(site - 1,
+                                                                   site)]
       ], [[1, 4, 3, 5], [-1, 2, 1], [-2, 5, 4], [-4, 3, -3, 2]])
     if normalize:
       right_envs[site - 1] /= tf.linalg.norm(right_envs[site - 1])
@@ -1377,17 +1380,20 @@ class OverlapMaximizer:
     if site == 0:
       left_envs[site + 1] = misc_mps.ncon([
           tensor,
-          tf.conj(conj_mps.get_tensor(site)), two_body_gates[(site, site + 1)]
+          tf.math.conj(conj_mps.get_tensor(site)), two_body_gates[(site,
+                                                                   site + 1)]
       ], [[1, 2, -1], [1, 3, -2], [3, -4, 2, -3]])
     elif (site > 0) and (site % 2 == 0):
       left_envs[site + 1] = misc_mps.ncon([
           left_envs[site], tensor,
-          tf.conj(conj_mps.get_tensor(site)), two_body_gates[(site, site + 1)]
+          tf.math.conj(conj_mps.get_tensor(site)), two_body_gates[(site,
+                                                                   site + 1)]
       ], [[1, 4, 3, 5], [1, 2, -1], [4, 5, -2], [3, -4, 2, -3]])
     elif (site > 0) and (site % 2 == 1):
       left_envs[site + 1] = misc_mps.ncon([
           left_envs[site], tensor,
-          tf.conj(conj_mps.get_tensor(site)), two_body_gates[(site, site + 1)]
+          tf.math.conj(conj_mps.get_tensor(site)), two_body_gates[(site,
+                                                                   site + 1)]
       ], [[1, 3, 2, 5], [1, 2, -1], [3, 4, -2], [4, -4, 5, -3]])
     if normalize:
       left_envs[site + 1] /= tf.linalg.norm(left_envs[site + 1])
@@ -1445,28 +1451,28 @@ class OverlapMaximizer:
     if (sites[0] > 0) and (sites[1] < len(mps) - 1) and (sites[0] % 2 == 0):
       env = misc_mps.ncon([
           left_envs[sites[0]], tensor_left, tensor_right, right_envs[sites[1]],
-          tf.conj(conj_mps.get_tensor(sites[0])),
-          tf.conj(conj_mps.get_tensor(sites[1]))
+          tf.math.conj(conj_mps.get_tensor(sites[0])),
+          tf.math.conj(conj_mps.get_tensor(sites[1]))
       ], [[7, 1, -1, 2], [7, -3, 6], [6, -4, 8], [8, 4, -2, 3], [1, 2, 5],
           [5, 3, 4]])
     elif (sites[0] > 0) and (sites[1] < len(mps) - 1) and (sites[0] % 2 == 1):
       env = misc_mps.ncon([
           left_envs[sites[0]], tensor_left, tensor_right, right_envs[sites[1]],
-          tf.conj(conj_mps.get_tensor(sites[0])),
-          tf.conj(conj_mps.get_tensor(sites[1]))
+          tf.math.conj(conj_mps.get_tensor(sites[0])),
+          tf.math.conj(conj_mps.get_tensor(sites[1]))
       ], [[1, 7, 2, -3], [1, 2, 3], [3, 4, 5], [5, 8, 4, -4], [7, -1, 6],
           [6, -2, 8]])
     elif sites[0] == 0:
       env = misc_mps.ncon([
           tensor_left, tensor_right, right_envs[sites[1]],
-          tf.conj(conj_mps.get_tensor(sites[0])),
-          tf.conj(conj_mps.get_tensor(sites[1]))
+          tf.math.conj(conj_mps.get_tensor(sites[0])),
+          tf.math.conj(conj_mps.get_tensor(sites[1]))
       ], [[1, -3, 2], [2, -4, 3], [3, 4, -2, 5], [1, -1, 6], [6, 5, 4]])
     elif sites[1] == (len(mps) - 1):
       env = misc_mps.ncon([
           left_envs[sites[0]], tensor_left, tensor_right,
-          tf.conj(conj_mps.get_tensor(sites[0])),
-          tf.conj(conj_mps.get_tensor(sites[1]))
+          tf.math.conj(conj_mps.get_tensor(sites[0])),
+          tf.math.conj(conj_mps.get_tensor(sites[1]))
       ], [[5, 4, -1, 3], [5, -3, 1], [1, -4, 6], [4, 3, 2], [2, -2, 6]])
     if normalize:
       env /= tf.linalg.norm(env)
@@ -1489,31 +1495,31 @@ class OverlapMaximizer:
       env = misc_mps.ncon([
           left_envs[site],
           mps.get_tensor(site),
-          tf.conj(conj_mps.get_tensor(site)), right_envs[site]
+          tf.math.conj(conj_mps.get_tensor(site)), right_envs[site]
       ], [[1, 5, -1, 4], [1, -2, 3], [5, 6, 7], [3, 7, 4, 6]])
 
     elif (site not in (0, len(mps) - 1)) and (site % 2 == 0):
       env = misc_mps.ncon([
           left_envs[site],
           mps.get_tensor(site),
-          tf.conj(conj_mps.get_tensor(site)), right_envs[site]
+          tf.math.conj(conj_mps.get_tensor(site)), right_envs[site]
       ], [[1, 5, 4, 6], [1, -2, 3], [5, 6, 7], [3, 7, -1, 4]])
     elif site == 0:
       env = misc_mps.ncon([
           mps.get_tensor(site),
-          tf.conj(conj_mps.get_tensor(site)), right_envs[site]
+          tf.math.conj(conj_mps.get_tensor(site)), right_envs[site]
       ], [[1, -2, 2], [1, 3, 4], [2, 4, -1, 3]])
     elif site == (len(mps) - 1):
       env = misc_mps.ncon([
           left_envs[site],
           mps.get_tensor(site),
-          tf.conj(conj_mps.get_tensor(site))
+          tf.math.conj(conj_mps.get_tensor(site))
       ], [[1, 3, -1, 4], [1, -2, 2], [3, 4, 2]])
 
     if normalize:
       env /= tf.linalg.norm(env)
     if ref_sym:
-      env = (env + tf.transpose(tf.conj(env))) / 2.0
+      env = (env + tf.transpose(tf.math.conj(env))) / 2.0
 
     return env
 
@@ -1532,17 +1538,17 @@ class OverlapMaximizer:
       tape.watch(g)
       if mps.dtype in (tf.complex128, tf.complex64):
         tmp = misc_mps.ncon(
-            [env, tf.linalg.expm(g - tf.conj(tf.transpose(g)))],
+            [env, tf.linalg.expm(g - tf.math.conj(tf.transpose(g)))],
             [[1, 2], [1, 2]])
-        #res = (1.0 + 1j)/2 * tmp + (1.0 - 1j)/2 * tf.conj(tmp)
-        #overlap = tf.real(tmp) - tf.abs(tf.imag(tmp))
-        overlap = 1 / 2 * (tmp + tf.conj(tmp))
+        #res = (1.0 + 1j)/2 * tmp + (1.0 - 1j)/2 * tf.math.conj(tmp)
+        #overlap = tf.math.real(tmp) - tf.abs(tf.math.imag(tmp))
+        overlap = 1 / 2 * (tmp + tf.math.conj(tmp))
         #the ones below shift the means of the signs around in the complex plane
-        #overlap = -tf.real(tmp) + tf.abs(tf.imag(tmp))
-        #overlap = tf.real(tmp) - tf.abs(tf.imag(tmp))
+        #overlap = -tf.math.real(tmp) + tf.abs(tf.math.imag(tmp))
+        #overlap = tf.math.real(tmp) - tf.abs(tf.math.imag(tmp))
       elif mps.dtype in (tf.float64, tf.float32):
         overlap = misc_mps.ncon(
-            [env, tf.linalg.expm(g - tf.conj(tf.transpose(g)))],
+            [env, tf.linalg.expm(g - tf.math.conj(tf.transpose(g)))],
             [[1, 2], [1, 2]])
       else:
         raise TypeError('unsupported dtype {0}'.format(dtype))
@@ -1569,15 +1575,15 @@ class OverlapMaximizer:
             tf.reshape(
                 env,
                 (ds[sites[0]] * ds[sites[1]], ds[sites[0]] * ds[sites[1]])),
-            tf.linalg.expm(g - tf.conj(tf.transpose(g)))
+            tf.linalg.expm(g - tf.math.conj(tf.transpose(g)))
         ], [[1, 2], [1, 2]])
-        res = (1.0 + 1j) / 2 * tmp + (1.0 - 1j) / 2 * tf.conj(tmp)
+        res = (1.0 + 1j) / 2 * tmp + (1.0 - 1j) / 2 * tf.math.conj(tmp)
       elif mps.dtype in (tf.float64, tf.float32):
         res = misc_mps.ncon([
             tf.reshape(
                 env,
                 (ds[sites[0]] * ds[sites[1]], ds[sites[0]] * ds[sites[1]])),
-            tf.linalg.expm(g - tf.conj(tf.transpose(g)))
+            tf.linalg.expm(g - tf.math.conj(tf.transpose(g)))
         ], [[1, 2], [1, 2]])
       else:
         raise TypeError('unsupported dtype {0}'.format(dtype))
@@ -1630,7 +1636,7 @@ class OverlapMaximizer:
       tape.watch(g)
       if mps.dtype in (tf.complex128, tf.complex64):
         psi_sigma = misc_mps.ncon(
-            [env, tf.linalg.expm(g - tf.conj(tf.transpose(g)))],
+            [env, tf.linalg.expm(g - tf.math.conj(tf.transpose(g)))],
             [[-1, 1, 2], [1, 2]])
         avsigns = np.average(np.sign(np.real(psi_sigma.numpy(
         )))) + 1j * np.average(np.sign(np.imag(psi_sigma.numpy())))
@@ -1638,19 +1644,19 @@ class OverlapMaximizer:
         if activation is not None:
           C = tf.complex(
               tf.math.reduce_mean(
-                  (1 - gamma) * activation(tf.real(psi_sigma)) -
-                  gamma * np.abs(tf.imag(psi_sigma)),
+                  (1 - gamma) * activation(tf.math.real(psi_sigma)) -
+                  gamma * np.abs(tf.math.imag(psi_sigma)),
                   axis=0), tf.zeros(shape=[1], dtype=mps.dtype.real_dtype))
         else:
           C = tf.complex(
               tf.math.reduce_mean(
-                  (1 - gamma) * tf.real(psi_sigma) -
-                  gamma * np.abs(tf.imag(psi_sigma)),
+                  (1 - gamma) * tf.math.real(psi_sigma) -
+                  gamma * np.abs(tf.math.imag(psi_sigma)),
                   axis=0), tf.zeros(shape=[1], dtype=mps.dtype.real_dtype))
-          #C =  (tf.math.reduce_sum(psi_sigma) + tf.math.reduce_sum(tf.conj(psi_sigma)))/np.sqrt(samples.shape[0])
+          #C =  (tf.math.reduce_sum(psi_sigma) + tf.math.reduce_sum(tf.math.conj(psi_sigma)))/np.sqrt(samples.shape[0])
       elif mps.dtype in (tf.float64, tf.float32):
         psi_sigma = misc_mps.ncon(
-            [env, tf.linalg.expm(g - tf.conj(tf.transpose(g)))],
+            [env, tf.linalg.expm(g - tf.math.conj(tf.transpose(g)))],
             [[-1, 1, 2], [1, 2]])
         log_psi = tf.math.reduce_mean(tf.math.log(psi_sigma), axis=0)
         avsigns = np.average(np.sign(psi_sigma.numpy()))
@@ -1663,7 +1669,7 @@ class OverlapMaximizer:
     g1 = tape.gradient(C, g)
     if mps.dtype in (tf.complex128, tf.complex64):
       g2 = tf.complex(
-          tf.real(tape.gradient(log_psi, g)),
+          tf.math.real(tape.gradient(log_psi, g)),
           tf.zeros(shape=g1.shape, dtype=g1.dtype.real_dtype))
     elif mps.dtype in (tf.float64, tf.float32):
       g2 = tape.gradient(log_psi, g)
@@ -1703,17 +1709,17 @@ class OverlapMaximizer:
       tape.watch(g)
       if mps.dtype in (tf.complex128, tf.complex64):
         psi_sigma = misc_mps.ncon(
-            [env, tf.linalg.expm(g - tf.conj(tf.transpose(g)))],
+            [env, tf.linalg.expm(g - tf.math.conj(tf.transpose(g)))],
             [[-1, 1, 2], [1, 2]])
         avsigns = np.average(np.sign(np.real(psi_sigma.numpy(
         )))) + 1j * np.average(np.sign(np.imag(psi_sigma.numpy())))
         log_psi = tf.math.reduce_mean(tf.math.log(psi_sigma), axis=0)
         C = tf.math.reduce_mean(
             psi_sigma, axis=0) + tf.math.reduce_mean(
-                tf.conj(psi_sigma), axis=0)
+                tf.math.conj(psi_sigma), axis=0)
       elif mps.dtype in (tf.float64, tf.float32):
         psi_sigma = misc_mps.ncon(
-            [env, tf.linalg.expm(g - tf.conj(tf.transpose(g)))],
+            [env, tf.linalg.expm(g - tf.math.conj(tf.transpose(g)))],
             [[-1, 1, 2], [1, 2]])
         log_psi = tf.math.reduce_mean(tf.math.log(psi_sigma), axis=0)
         avsigns = np.average(np.sign(psi_sigma.numpy()))
@@ -1755,17 +1761,17 @@ class OverlapMaximizer:
       tape.watch(g)
       if mps.dtype in (tf.complex128, tf.complex64):
         psi_sigma = misc_mps.ncon(
-            [env, tf.linalg.expm(g - tf.conj(tf.transpose(g)))],
+            [env, tf.linalg.expm(g - tf.math.conj(tf.transpose(g)))],
             [[-1, 1, 2], [1, 2]])
         avsigns = np.average(np.sign(np.real(psi_sigma.numpy(
         )))) + 1j * np.average(np.sign(np.imag(psi_sigma.numpy())))
         C1 = (tf.math.reduce_sum(psi_sigma, axis=0) + tf.math.reduce_sum(
-            tf.conj(psi_sigma), axis=0)) / np.sqrt(samples.shape[0])
+            tf.math.conj(psi_sigma), axis=0)) / np.sqrt(samples.shape[0])
         C2 = tf.math.reduce_sum(
-            psi_sigma * tf.conj(psi_sigma), axis=0)  #the norm
+            psi_sigma * tf.math.conj(psi_sigma), axis=0)  #the norm
       elif mps.dtype in (tf.float64, tf.float32):
         psi_sigma = misc_mps.ncon(
-            [env, tf.linalg.expm(g - tf.conj(tf.transpose(g)))],
+            [env, tf.linalg.expm(g - tf.math.conj(tf.transpose(g)))],
             [[-1, 1, 2], [1, 2]])
         avsigns = np.average(np.sign(psi_sigma.numpy()))
         C1 = tf.math.reduce_sum(psi_sigma, axis=0) / np.sqrt(samples.shape[0])
@@ -1829,7 +1835,7 @@ class OverlapMaximizer:
         psi_sigma = misc_mps.ncon([
             tf.reshape(env, (samples.shape[0], ds[sites[0]] * ds[sites[1]],
                              ds[sites[0]] * ds[sites[1]])),
-            tf.linalg.expm(g - tf.conj(tf.transpose(g)))
+            tf.linalg.expm(g - tf.math.conj(tf.transpose(g)))
         ], [[-1, 1, 2], [1, 2]])
         avsigns = np.average(np.sign(np.real(psi_sigma.numpy(
         )))) + 1j * np.average(np.sign(np.imag(psi_sigma.numpy())))
@@ -1837,8 +1843,8 @@ class OverlapMaximizer:
         if activation is not None:
           C = tf.complex(
               tf.math.reduce_mean(
-                  (1 - gamma) * activation(tf.real(psi_sigma)) -
-                  gamma * np.abs(tf.imag(psi_sigma)),
+                  (1 - gamma) * activation(tf.math.real(psi_sigma)) -
+                  gamma * np.abs(tf.math.imag(psi_sigma)),
                   axis=0), tf.zeros(shape=[1], dtype=mps.dtype.real_dtype))
         else:
           C = tf.math.reduce_mean(psi_sigma, axis=0)
@@ -1846,7 +1852,7 @@ class OverlapMaximizer:
         psi_sigma = misc_mps.ncon([
             tf.reshape(env, (samples.shape[0], ds[sites[0]] * ds[sites[1]],
                              ds[sites[0]] * ds[sites[1]])),
-            tf.linalg.expm(g - tf.conj(tf.transpose(g)))
+            tf.linalg.expm(g - tf.math.conj(tf.transpose(g)))
         ], [[-1, 1, 2], [1, 2]])
         avsigns = np.average(np.sign(psi_sigma.numpy()))
         log_psi = tf.math.reduce_mean(tf.math.log(psi_sigma), axis=0)
@@ -1859,7 +1865,7 @@ class OverlapMaximizer:
     g1 = tape.gradient(C, g)
     if mps.dtype in (tf.complex128, tf.complex64):
       g2 = tf.complex(
-          tf.real(tape.gradient(log_psi, g)),
+          tf.math.real(tape.gradient(log_psi, g)),
           tf.zeros(shape=g1.shape, dtype=g1.dtype.real_dtype))
     elif mps.dtype in (tf.float64, tf.float32):
       g2 = tape.gradient(log_psi, g)
@@ -1878,12 +1884,12 @@ class OverlapMaximizer:
     return misc_mps.ncon([one_body_gates[site], env], [[1, 2], [1, 2]])
     # if site%2 == 1:
     #     tensor = misc_mps.ncon([mps.get_tensor(site), one_body_gates[site]], [[-1,1,-3],[-2, 1]])
-    #     return misc_mps.ncon([left_envs[site], tensor, tf.conj(conj_mps.get_tensor(site)),
+    #     return misc_mps.ncon([left_envs[site], tensor, tf.math.conj(conj_mps.get_tensor(site)),
     #                           right_envs[site]],
     #                          [[1,5,2,4], [1,2,3], [5,6,7], [3,7,4,6]])
     # elif site%2 == 0:
     #     tensor = misc_mps.ncon([mps.get_tensor(site), one_body_gates[site]], [[-1,1,-3],[-2, 1]])
-    #     return misc_mps.ncon([left_envs[site], tensor, tf.conj(conj_mps.get_tensor(site)),
+    #     return misc_mps.ncon([left_envs[site], tensor, tf.math.conj(conj_mps.get_tensor(site)),
     #                     right_envs[site]],
     #                    [[1,5,4,6], [1,2,3], [5,6,7], [3,7,2,4]])
   @staticmethod
@@ -2682,6 +2688,9 @@ class OverlapMaximizer:
                                    the new gate is given by `alpha_gate` * old_gate + `alpha_samples` * sample_update + `alpha_ref_mps` * ref_mps_udate
             verbose (int):         verbosity flag; larger means more output
         """
+    raise ValueError(
+        'this is currently broken due to tf.GradientTape not taking complex variables'
+    )
     self.left_envs_batched = {}
     self.right_envs_batched = {}
     self.left_envs = {}
@@ -3268,17 +3277,16 @@ class OneBodyStoquastisizer:
       self.gates = one_body_gates
 
   def add_unitary_left(self, site, reference_mps, normalize=False):
-    net = tn.TensorNetwork(backend=self.backend)
-    gate = net.add_node(self.gates[site])
-    mps = net.add_node(reference_mps.get_tensor(site))
-    mpo = net.add_node(self.mpo.get_tensor(site))
-    conj_mps = net.add_node(net.backend.conj(reference_mps.get_tensor(site)))
-    conj_gate = net.add_node(net.backend.conj(self.gates[site]))
+    gate = tn.Node(self.gates[site])
+    mps = tn.Node(reference_mps.get_tensor(site))
+    mpo = tn.Node(self.mpo.get_tensor(site))
+    conj_mps = tn.conj(mps)
+    conj_gate = tn.conj(gate)
     if site == 0:
-      L = net.add_node(net.backend.ones((1, 1, 1), dtype=self.mpo.dtype))
+      L = tn.Node(np.ones((1, 1, 1)))
       self.left_envs[site] = L.tensor
 
-    L = net.add_node(self.left_envs[site])
+    L = tn.Node(self.left_envs[site])
     L[0] ^ mps[0]
     L[1] ^ conj_mps[0]
     L[2] ^ mpo[0]
@@ -3297,17 +3305,16 @@ class OneBodyStoquastisizer:
     self.left_envs[site + 1] = out.tensor
 
   def add_unitary_right(self, site, reference_mps, normalize=False):
-    net = tn.TensorNetwork(backend=self.backend)
-    gate = net.add_node(self.gates[site])
-    mps = net.add_node(reference_mps.get_tensor(site))
-    mpo = net.add_node(self.mpo.get_tensor(site))
-    conj_mps = net.add_node(net.backend.conj(reference_mps.get_tensor(site)))
-    conj_gate = net.add_node(net.backend.conj(self.gates[site]))
+    gate = tn.Node(self.gates[site])
+    mps = tn.Node(reference_mps.get_tensor(site))
+    mpo = tn.Node(self.mpo.get_tensor(site))
+    conj_mps = tn.conj(mps)
+    conj_gate = tn.conj(gate)
     if site == len(self.mpo) - 1:
-      R = net.add_node(net.backend.ones((1, 1, 1), dtype=self.mpo.dtype))
+      R = tn.Node(np.ones((1, 1, 1)))
       self.right_envs[site] = R.tensor
 
-    R = net.add_node(self.right_envs[site])
+    R = tn.Node(self.right_envs[site])
 
     R[0] ^ mps[2]
     R[1] ^ conj_mps[2]
@@ -3334,13 +3341,12 @@ class OneBodyStoquastisizer:
       self.add_unitary_right(site, reference_mps, normalize=normalize)
 
   def get_environment(self, site, reference_mps):
-    net = tn.TensorNetwork(backend=self.backend)
-    L = net.add_node(self.left_envs[site])
-    R = net.add_node(self.right_envs[site])
-    mpo = net.add_node(self.mpo[site])
-    mps = net.add_node(reference_mps.get_tensor(site))
-    conj_mps = net.add_node(net.backend.conj(reference_mps.get_tensor(site)))
-    conj_gate = net.add_node(net.backend.conj(self.gates[site]))
+    L = tn.Node(self.left_envs[site])
+    R = tn.Node(self.right_envs[site])
+    mpo = tn.Node(self.mpo[site])
+    mps = tn.Node(reference_mps.get_tensor(site))
+    conj_mps = tn.conj(mps)
+    conj_gate = tn.conj(tn.Node(self.gates[site]))
 
     L[0] ^ mps[0]
     R[0] ^ mps[2]
@@ -3395,10 +3401,9 @@ class OneBodyStoquastisizer:
   def absorb_gates(self):
     final_mpo = copy.deepcopy(self.mpo)
     for site in range(len(self.mpo)):
-      net = tn.TensorNetwork(backend=self.backend)
-      mpo = net.add_node(self.mpo[site])
-      gate = net.add_node(self.gates[site])
-      conj_gate = net.add_node(net.backend.conj(self.gates[site]))
+      mpo = tn.Node(self.mpo[site])
+      gate = tn.Node(self.gates[site])
+      conj_gate = tn.conj(tn.Node(self.gates[site]))
       mpo[2] ^ conj_gate[0]
       mpo[3] ^ gate[0]
       output_order = [mpo[0], mpo[1], conj_gate[1], gate[1]]
@@ -3417,7 +3422,7 @@ class OneBodyStoquastisizer:
       for site in range(len(self.mpo)):
         env = self.get_environment(site, reference_mps)
         cost = misc_mps.ncon([env, self.gates[site]], [[1, 2], [1, 2]])
-        if tf.real(cost) > 0:
+        if tf.math.real(cost) > 0:
           return False
         self.gates[site] = self.update_svd_numpy(env)
         self.add_unitary_left(site, reference_mps, normalize=normalize)
@@ -3427,7 +3432,7 @@ class OneBodyStoquastisizer:
       for site in reversed(range(len(self.mpo))):
         env = self.get_environment(site, reference_mps)
         cost = misc_mps.ncon([env, self.gates[site]], [[1, 2], [1, 2]])
-        if tf.real(cost) > 0:
+        if tf.math.real(cost) > 0:
           return False
         self.gates[site] = self.update_svd_numpy(env)
         self.add_unitary_right(site, reference_mps, normalize=normalize)
@@ -3570,11 +3575,10 @@ class TwoBodyStoquastisizer:
     """
     #TODO: contraction order probably not optimal. Fix this!
     if sites == (-1, 0):
-      net = tn.TensorNetwork(backend=self.backend)
-      L = net.add_node(net.backend.ones((1, 1, 1), dtype=self.mpo.dtype))
-      mps = net.add_node(mps_tensor)
-      mpo = net.add_node(self.mpo.get_tensor(sites[1]))
-      conj_mps = net.add_node(net.backend.conj(mps_tensor))
+      L = tn.Node(np.ones((1, 1, 1)))
+      mps = tn.Node(mps_tensor)
+      mpo = tn.Node(self.mpo.get_tensor(sites[1]))
+      conj_mps = tn.conj(mps)
       L[0] ^ mps[0]
       L[1] ^ conj_mps[0]
       L[2] ^ mpo[0]
@@ -3586,14 +3590,13 @@ class TwoBodyStoquastisizer:
       self.left_envs[(sites[0] + 1, sites[1] + 1)] = result.tensor
     else:
       site = sites[0]
-      net = tn.TensorNetwork(backend=self.backend)
-      gate = net.add_node(self.gates[sites])
-      mps = net.add_node(mps_tensor)
-      mpo = net.add_node(self.mpo.get_tensor(sites[1]))
-      conj_mps = net.add_node(net.backend.conj(mps_tensor))
-      conj_gate = net.add_node(net.backend.conj(self.gates[sites]))
+      gate = tn.Node(self.gates[sites])
+      mps = tn.Node(mps_tensor)
+      mpo = tn.Node(self.mpo.get_tensor(sites[1]))
+      conj_mps = tn.conj(mps)
+      conj_gate = tn.conj(gate)
 
-      L = net.add_node(self.left_envs[sites])
+      L = tn.Node(self.left_envs[sites])
       L[0] ^ mps[0]
       L[1] ^ conj_mps[0]
       L[2] ^ gate[2]
@@ -3637,11 +3640,10 @@ class TwoBodyStoquastisizer:
     """
     #TODO: contraction order probably not optimal. Fix this!
     if sites == (len(self.mpo) - 1, len(self.mpo)):
-      net = tn.TensorNetwork(backend=self.backend)
-      R = net.add_node(net.backend.ones((1, 1, 1), dtype=self.mpo.dtype))
-      mps = net.add_node(mps_tensor)
-      mpo = net.add_node(self.mpo.get_tensor(sites[0]))
-      conj_mps = net.add_node(net.backend.conj(mps_tensor))
+      R = tn.Node(np.ones((1, 1, 1)))
+      mps = tn.Node(mps_tensor)
+      mpo = tn.Node(self.mpo.get_tensor(sites[0]))
+      conj_mps = tn.conj(mps)
       R[0] ^ mps[2]
       R[1] ^ conj_mps[2]
       R[2] ^ mpo[1]
@@ -3652,14 +3654,13 @@ class TwoBodyStoquastisizer:
       result.reorder_edges(output_order)
       self.right_envs[(sites[0] - 1, sites[1] - 1)] = result.tensor
     else:
-      net = tn.TensorNetwork(backend=self.backend)
-      gate = net.add_node(self.gates[sites])
-      mps = net.add_node(mps_tensor)
-      mpo = net.add_node(self.mpo.get_tensor(sites[0]))
-      conj_mps = net.add_node(net.backend.conj(mps_tensor))
-      conj_gate = net.add_node(net.backend.conj(self.gates[sites]))
+      gate = tn.Node(self.gates[sites])
+      mps = tn.Node(mps_tensor)
+      mpo = tn.Node(self.mpo.get_tensor(sites[0]))
+      conj_mps = tn.conj(mps)
+      conj_gate = tn.conj(gate)
 
-      R = net.add_node(self.right_envs[sites])
+      R = tn.Node(self.right_envs[sites])
       R[0] ^ mps[2]
       R[1] ^ conj_mps[2]
       R[2] ^ gate[3]
@@ -3711,10 +3712,9 @@ class TwoBodyStoquastisizer:
                              normalize=normalize)
 
   def get_environment(self, sites):
-    net = tn.TensorNetwork(backend=self.backend)
-    L = net.add_node(self.left_envs[sites])
-    R = net.add_node(self.right_envs[sites])
-    conj_gate = net.add_node(net.backend.conj(self.gates[sites]))
+    L = tn.Node(self.left_envs[sites])
+    R = tn.Node(self.right_envs[sites])
+    conj_gate = tn.conj(tn.Node(self.gates[sites]))
 
     L[0] ^ R[0]
     L[1] ^ R[1]
@@ -3819,8 +3819,7 @@ class TwoBodyStoquastisizer:
     Absorb the gates in `Stoquastizizer.gates` into Stoquastizizer.mpo`.
     This can potentially result in very large bond dimensions of the resulting MPO
     """
-    net = tn.TensorNetwork(backend=self.backend)
-    gates = {k: net.add_node(v) for k, v in self.gates.items()}
+    gates = {k: tn.Node(v) for k, v in self.gates.items()}
     top_edges = {}
     bottom_edges = {}
     N = len(self.mpo)
@@ -3850,7 +3849,7 @@ class TwoBodyStoquastisizer:
     anc = {}
     for site in range(len(self.mpo) - 1):
       gate = gates[(site, site + 1)]
-      L, R, _ = net.split_node(gate, [gate[0], gate[2]], [gate[1], gate[3]])
+      L, R, _ = tn.split_node(gate, [gate[0], gate[2]], [gate[1], gate[3]])
       anc[site] = L[2]
       new_gates.append(L)
       new_gates.append(R)
@@ -3872,10 +3871,9 @@ class TwoBodyStoquastisizer:
     tensors[-1] = tf.expand_dims(tensors[-1], 1)
     final = []
     for site in range(len(self.mpo)):
-      net = tn.TensorNetwork(backend=self.backend)
-      gate = net.add_node(tensors[site])
-      conj_gate = net.add_node(net.backend.conj(tensors[site]))
-      mpo = net.add_node(self.mpo[site])
+      gate = tn.Node(tensors[site])
+      conj_gate = tn.conj(gate)
+      mpo = tn.Node(self.mpo[site])
       gate[2] ^ mpo[3]
       conj_gate[2] ^ mpo[2]
       out_order = [
@@ -3899,7 +3897,7 @@ class TwoBodyStoquastisizer:
         env = self.get_environment((site, site + 1))
         cost = misc_mps.ncon([env, self.gates[(site, site + 1)]],
                              [[1, 2, 3, 4], [1, 2, 3, 4]])
-        if tf.real(cost) > 0:
+        if tf.math.real(cost) > 0:
           return False
         self.gates[(site, site + 1)] = self.update_svd_numpy(env)
         self.add_unitary_left((site, site + 1),
@@ -3911,7 +3909,7 @@ class TwoBodyStoquastisizer:
         env = self.get_environment((site, site + 1))
         cost = misc_mps.ncon([env, self.gates[(site, site + 1)]],
                              [[1, 2, 3, 4], [1, 2, 3, 4]])
-        if tf.real(cost) > 0:
+        if tf.math.real(cost) > 0:
           return False
         self.gates[(site, site + 1)] = self.update_svd_numpy(env)
         self.add_unitary_right((site, site + 1), reference_mps.get_tensor(site))
@@ -3924,15 +3922,14 @@ class TwoBodyStoquastisizer:
   def mat_vec(left_env, right_env, left_gate, right_gate, mpo_tensor, backend,
               site, mps_tensor):
     #TODO: contraction order probably not optimal. Fix this!
-    net = tn.TensorNetwork(backend=backend)
-    L = net.add_node(left_env)
-    R = net.add_node(right_env)
-    LGATE = net.add_node(left_gate)
-    CONJ_LGATE = net.add_node(net.backend.conj(left_gate))
-    RGATE = net.add_node(right_gate)
-    CONJ_RGATE = net.add_node(net.backend.conj(right_gate))
-    MPS = net.add_node(mps_tensor)
-    MPO = net.add_node(mpo_tensor)
+    L = tn.Node(left_env)
+    R = tn.Node(right_env)
+    LGATE = tn.Node(left_gate)
+    CONJ_LGATE = tn.conj(LGATE)
+    RGATE = tn.Node(right_gate)
+    CONJ_RGATE = tn.conj(RGATE)
+    MPS = tn.Node(mps_tensor)
+    MPO = tn.Node(mpo_tensor)
     if site % 2 == 1:
       L[0] ^ MPS[0]
       L[2] ^ LGATE[2]

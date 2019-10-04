@@ -1,6 +1,6 @@
 import tensornetwork as tn
 import tensorflow as tf
-tf.enable_v2_behavior()
+tn.set_default_backend('tensorflow')
 import experiments.MPS.matrixproductstates as MPSmodule
 import experiments.MPS.matrixproductoperators as MPOmodule
 import experiments.MPS.DMRG as DMRG

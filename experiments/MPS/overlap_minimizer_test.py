@@ -16,6 +16,7 @@ unittests
 """
 import tensorflow as tf
 import tensornetwork as tn
+tn.set_default_backend('tensorflow')
 import numpy as np
 import itertools
 import experiments.MPS.matrixproductstates as MPS

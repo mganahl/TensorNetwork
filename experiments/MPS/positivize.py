@@ -1,5 +1,4 @@
 import tensorflow as tf
-tf.enable_v2_behavior()
 import copy
 from sys import stdout
 import tensornetwork as tn

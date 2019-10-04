@@ -20,7 +20,6 @@ import numpy as np
 import tensorflow as tf
 import tensornetwork as tn
 from experiments.MPS import misc_mps
-from experiments.MPS import tensornetwork_tools as tnt
 from sys import stdout
 
 
@@ -54,63 +53,14 @@ def orthonormalization(A, which):
     """
   if which in ('l', 'left', 1):
     eye = tf.eye(tf.cast(tf.shape(A)[2], tf.int32), dtype=A.dtype)
-    M = misc_mps.ncon([A, tf.conj(A)], [[1, 2, -1], [1, 2, -2]])
+    M = misc_mps.ncon([A, tf.math.conj(A)], [[1, 2, -1], [1, 2, -2]])
     return tf.norm(M - eye)
   elif which in ('r', 'right', -1):
     eye = tf.eye(tf.cast(tf.shape(A)[0], tf.int32), dtype=A.dtype)
-    M = misc_mps.ncon([A, tf.conj(A)], [[-1, 2, 1], [-2, 2, 1]])
+    M = misc_mps.ncon([A, tf.math.conj(A)], [[-1, 2, 1], [-2, 2, 1]])
     return tf.norm(M - eye)
   else:
     raise ValueError("{} is not a valid direction.".format(which))
-
-
-def mps_from_dense(psi, max_bond_dim=None, auto_trunc_max_err=0.0):
-  """Construct an MPS from a dense vector psi.
-    The shape of psi must be the sequence of site Hilbert space dimensions.
-    The number of sites is `rank(psi)`.
-    Args:
-        psi: The dense state as a tensor.
-    Returns:
-        Gs: Gamma tensors, length rank(psi).
-        Ls: Lambda matrices (Schmidt coefficients), length rank(psi).
-        nrm: The norm of the original state.
-    """
-  psi_dims = tf.unstack(tf.shape(psi))  # shape as a list of scalar Tensors
-  num_sites = len(psi_dims)
-
-  nrm = tf.norm(psi)
-  psi = tf.divide(psi, nrm)
-
-  psiR = tf.reshape(psi, (1, *psi_dims, 1))  # adds boundary bond dimensions
-  Gs = []
-  Ls = [tf.ones((1, 1), dtype=psi.dtype)]  # left boundary Lambda
-  s_prev = tf.ones((1,), dtype=psi.dtype)
-
-  sites_remaining = num_sites + 2  # add the virtual boundary "sites"
-  while sites_remaining > 3:
-    # prep for SVD by folding the previous singular values back into psiR
-    Lm1 = tf.diag(s_prev)
-    psiR = misc_mps.ncon([Lm1, psiR],
-                         [(-1, 1), (1, *range(-2, -sites_remaining - 1, -1))])
-
-    U, s, psiR, s_rest = tnt.svd_tensor(
-        psiR, [0, 1],
-        list(range(2, sites_remaining)),
-        nsv_max=max_bond_dim,
-        auto_trunc_max_err=auto_trunc_max_err)
-
-    # turn U into a Gamma using the previous inverse singular values
-    Lm1_i = tf.diag(tf.reciprocal(s_prev))
-    G = misc_mps.ncon([Lm1_i, U], [(-1, 1), (1, -2, -3)])
-
-    Gs.append(G)
-    Ls.append(tf.diag(s))
-    s_prev = s
-    sites_remaining -= 1
-
-  Gs.append(psiR)
-
-  return Gs, Ls, nrm
 
 
 class AbstractMPSUnitCell:
@@ -144,7 +94,7 @@ class AbstractMPSUnitCell:
              D,
              name=None,
              dtype=tf.float32,
-             initializer_function=tf.random_uniform,
+             initializer_function=tf.random.uniform,
              *args,
              **kwargs):
     """
@@ -383,9 +333,9 @@ class AbstractMPSUnitCell:
       r = right_envs[sites[n]]
       l = left_envs[sites[n]]
       A = self.get_tensor(sites[n])
-      expval = misc_mps.ncon([l, A, op, r, tf.conj(A)], [(2, 4), (2, 1, 3),
-                                                         (5, 1), (3, 6),
-                                                         (4, 5, 6)])
+      expval = misc_mps.ncon([l, A, op, r, tf.math.conj(A)], [(2, 4), (2, 1, 3),
+                                                              (5, 1), (3, 6),
+                                                              (4, 5, 6)])
       res.append(expval)
 
     return tf.convert_to_tensor(res)
@@ -436,16 +386,16 @@ class AbstractMPSUnitCell:
       ls = self.get_envs_left(left_sites_mod)
 
       A = self.get_tensor(site1)
-      r = misc_mps.ncon([A, tf.conj(A), op1, rs[site1]], [(-1, 2, 1),
-                                                          (-2, 3, 4), (3, 2),
-                                                          (1, 4)])
+      r = misc_mps.ncon([A, tf.math.conj(A), op1, rs[site1]], [(-1, 2, 1),
+                                                               (-2, 3, 4),
+                                                               (3, 2), (1, 4)])
 
       n1 = np.min(left_sites)
       for n in range(site1 - 1, n1 - 1, -1):
         if n in left_sites:
           l = ls[n % N]
           A = self.get_tensor(n % N)
-          res = misc_mps.ncon([l, A, op2, tf.conj(A), r],
+          res = misc_mps.ncon([l, A, op2, tf.math.conj(A), r],
                               [[1, 4], [1, 2, 5], [3, 2], [4, 3, 6], [5, 6]])
           c.append(res)
         if n > n1:
@@ -459,7 +409,7 @@ class AbstractMPSUnitCell:
       A = self.get_tensor(site1)
       op = misc_mps.ncon([op2, op1], [[-1, 1], [1, -2]])
       res = misc_mps.ncon(
-          [ls[site1], A, op, tf.conj(A), rs[site1]],
+          [ls[site1], A, op, tf.math.conj(A), rs[site1]],
           [[1, 4], [1, 2, 5], [3, 2], [4, 3, 6], [5, 6]])
       c.append(res)
 
@@ -470,15 +420,15 @@ class AbstractMPSUnitCell:
       rs = self.get_envs_right(right_sites_mod)
 
       A = self.get_tensor(site1)
-      l = misc_mps.ncon([ls[site1], A, op1, tf.conj(A)], [(1, 2), (1, 3, -1),
-                                                          (4, 3), (2, 4, -2)])
+      l = misc_mps.ncon([ls[site1], A, op1, tf.math.conj(A)],
+                        [(1, 2), (1, 3, -1), (4, 3), (2, 4, -2)])
 
       n2 = np.max(right_sites)
       for n in range(site1 + 1, n2 + 1):
         if n in right_sites:
           r = rs[n % N]
           A = self.get_tensor(n % N)
-          res = misc_mps.ncon([l, A, op2, tf.conj(A), r],
+          res = misc_mps.ncon([l, A, op2, tf.math.conj(A), r],
                               [[1, 4], [1, 2, 5], [3, 2], [4, 3, 6], [5, 6]])
           c.append(res)
 
@@ -533,7 +483,7 @@ class AbstractFiniteMPS(AbstractMPSUnitCell):
              D,
              name=None,
              dtype=tf.float32,
-             initializer_function=tf.random_uniform,
+             initializer_function=tf.random.uniform,
              *args,
              **kwargs):
     """
@@ -725,7 +675,7 @@ class MPSUnitCell_Generic(AbstractMPSUnitCell):
              D=list,
              name=None,
              dtype=tf.float32,
-             initializer_function=tf.random_uniform,
+             initializer_function=tf.random.uniform,
              *args,
              **kwargs):
     """
@@ -799,7 +749,7 @@ class FiniteMPS_Generic(MPSUnitCell_Generic, AbstractFiniteMPS):
              D=list,
              name=None,
              dtype=tf.float32,
-             initializer_function=tf.random_uniform,
+             initializer_function=tf.random.uniform,
              *args,
              **kwargs):
     """
@@ -1255,13 +1205,13 @@ class MPSUnitCellCentralGauge(AbstractMPSUnitCell):
 
     if site == len(self) - 1:
       return misc_mps.ncon(
-          [self._right_mat, tf.conj(self._right_mat)], [[-1, 1], [-2, 1]])
+          [self._right_mat, tf.math.conj(self._right_mat)], [[-1, 1], [-2, 1]])
 
     elif site >= self.pos and site < len(self) - 1:
       return tf.eye(int(self.D[site + 1]), dtype=self.dtype)
     else:
-      r = misc_mps.ncon(
-          [self.centermatrix, tf.conj(self.centermatrix)], [[-1, 1], [-2, 1]])
+      r = misc_mps.ncon([self.centermatrix,
+                         tf.math.conj(self.centermatrix)], [[-1, 1], [-2, 1]])
       for n in range(self.pos - 1, site, -1):
         r = self.transfer_op(n, 'r', r)
       return r
@@ -1271,14 +1221,15 @@ class MPSUnitCellCentralGauge(AbstractMPSUnitCell):
         return the norm of the center matrix
         """
     return tf.sqrt(
-        misc_mps.ncon(
-            [self.centermatrix, tf.conj(self.centermatrix)], [[1, 2], [1, 2]]))
+        misc_mps.ncon([self.centermatrix,
+                       tf.math.conj(self.centermatrix)], [[1, 2], [1, 2]]))
 
   def normalize(self):
     """
     normalizes the center matrix
     """
-    Z = tf.sqrt(misc_mps.ncon([self.mat, tf.conj(self.mat)], [[1, 2], [1, 2]]))
+    Z = tf.sqrt(
+        misc_mps.ncon([self.mat, tf.math.conj(self.mat)], [[1, 2], [1, 2]]))
     self.mat /= Z
     return Z
 
@@ -1304,7 +1255,7 @@ class MPSUnitCellCentralGauge(AbstractMPSUnitCell):
       self._tensors[self.pos - 1] = misc_mps.ncon(
           [self._tensors[self.pos - 1], U], [[-1, -2, 1], [1, -3]])
       self._tensors[self.pos] = misc_mps.ncon(
-          [tf.conj(V), self._tensors[self.pos]], [[1, -1], [1, -2, -3]])
+          [tf.math.conj(V), self._tensors[self.pos]], [[1, -1], [1, -2, -3]])
       self.mat = tf.diag(S)
 
   def position(self, bond, D=None, thresh=1E-32, normalize=False):
@@ -1589,7 +1540,7 @@ class FiniteMPSCentralGauge(MPSUnitCellCentralGauge, AbstractFiniteMPS):
           tn.ncon([
               lenv,
               self.get_tensor(site),
-              tf.conj(self.get_tensor(site)), right_envs[site]
+              tf.math.conj(self.get_tensor(site)), right_envs[site]
           ], [[-1, 1, 2], [1, -2, 3], [2, -3, 4], [3, 4]]))  #shape (Nt, d)
       #print(p_joint_0.shape, Z0.shape, Z1.shape, p_joint_1.shape)
       p_cond = Z0 / Z1 * p_joint_0 / p_joint_1
@@ -1611,7 +1562,7 @@ class FiniteMPSCentralGauge(MPSUnitCellCentralGauge, AbstractFiniteMPS):
           tf.matmul(tf.transpose(lenv, (0, 2, 1)), tmp),
           (0, 2,
            1))  #has shape (Nt, Dr, Dl') #FIXME: get rid of all these transposes
-      lenv = tf.matmul(tmp2, tf.conj(tmp))  #has shape (Nt, Dr, Dr')
+      lenv = tf.matmul(tmp2, tf.math.conj(tmp))  #has shape (Nt, Dr, Dr')
       Z1 = Z0
     return tf.stack(sigmas, axis=1)
 
@@ -1679,7 +1630,7 @@ class InfiniteMPSCentralGauge(MPSUnitCellCentralGauge, AbstractInfiniteMPS):
              precision=1E-10,
              power_method=True,
              numeig=1,
-             initializer_function=tf.random_uniform,
+             initializer_function=tf.random.uniform,
              *args,
              **kwargs):
 
@@ -1761,7 +1712,7 @@ class InfiniteMPSCentralGauge(MPSUnitCellCentralGauge, AbstractInfiniteMPS):
         name=name)
     #guarantee a properly initialized state
     #random() cannot be called with gauge = 's', because all **kwargs are passed to
-    #tf.random_uniform which has no keyword gauge (it will raise an exception)
+    #tf.random.uniform which has no keyword gauge (it will raise an exception)
     if gauge in ('s', 'symmetric', 0):
       self.restore_form()
 
