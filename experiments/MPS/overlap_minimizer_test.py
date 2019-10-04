@@ -16,7 +16,7 @@ unittests
 """
 import tensorflow as tf
 import tensornetwork as tn
-tn.set_default_backend('tensorflow')
+
 import numpy as np
 import itertools
 import experiments.MPS.matrixproductstates as MPS
@@ -25,6 +25,7 @@ import experiments.MPS.matrixproductoperators as MPO
 import experiments.MPS.overlap_minimizer as OM
 import pytest
 import numpy as np
+tn.set_default_backend('tensorflow')
 
 
 def test_matvec():
@@ -134,3 +135,6 @@ def test_stoq_dmrg():
   dmrg = DMRG.FiniteDMRGEngine(mps2, mpo)
   e2 = dmrg.run_one_site(verbose=1, Nsweeps=10, ncv=ncv, precision=precision)
   np.testing.assert_allclose(e1, e2)
+
+
+#

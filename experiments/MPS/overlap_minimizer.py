@@ -20,7 +20,7 @@ import copy
 import pickle
 import time
 import tensornetwork as tn
-tn.set_default_backend('tensorflow')
+
 import numpy as np
 import tensorflow as tf
 import experiments.MPS_classifier.batchtensornetwork as btn
@@ -35,6 +35,7 @@ import functools as fct
 from experiments.MPS.matrixproductstates import InfiniteMPSCentralGauge, FiniteMPSCentralGauge
 from typing import Tuple, Optional, Any
 import itertools
+tn.set_default_backend('tensorflow')
 misc_mps.compile_ncon(
     True)  #compiles ncon calls into graphs; use `True` for better performance
 misc_mps.compile_decomps(
@@ -746,6 +747,7 @@ class OverlapMaximizer:
     self.left_envs = {}
     self.right_envs_batched = {}
     self.left_envs_batched = {}
+    self.backend = 'tensorflow'
 
   def save(self, name=None):
     data = {
@@ -3277,16 +3279,16 @@ class OneBodyStoquastisizer:
       self.gates = one_body_gates
 
   def add_unitary_left(self, site, reference_mps, normalize=False):
-    gate = tn.Node(self.gates[site])
-    mps = tn.Node(reference_mps.get_tensor(site))
-    mpo = tn.Node(self.mpo.get_tensor(site))
+    gate = tn.Node(self.gates[site], backend=self.backend)
+    mps = tn.Node(reference_mps.get_tensor(site), backend=self.backend)
+    mpo = tn.Node(self.mpo.get_tensor(site), backend=self.backend)
     conj_mps = tn.conj(mps)
     conj_gate = tn.conj(gate)
     if site == 0:
-      L = tn.Node(np.ones((1, 1, 1)))
+      L = tn.Node(np.ones((1, 1, 1)), backend=self.backend)
       self.left_envs[site] = L.tensor
 
-    L = tn.Node(self.left_envs[site])
+    L = tn.Node(self.left_envs[site], backend=self.backend)
     L[0] ^ mps[0]
     L[1] ^ conj_mps[0]
     L[2] ^ mpo[0]
@@ -3305,16 +3307,16 @@ class OneBodyStoquastisizer:
     self.left_envs[site + 1] = out.tensor
 
   def add_unitary_right(self, site, reference_mps, normalize=False):
-    gate = tn.Node(self.gates[site])
-    mps = tn.Node(reference_mps.get_tensor(site))
-    mpo = tn.Node(self.mpo.get_tensor(site))
+    gate = tn.Node(self.gates[site], backend=self.backend)
+    mps = tn.Node(reference_mps.get_tensor(site), backend=self.backend)
+    mpo = tn.Node(self.mpo.get_tensor(site), backend=self.backend)
     conj_mps = tn.conj(mps)
     conj_gate = tn.conj(gate)
     if site == len(self.mpo) - 1:
-      R = tn.Node(np.ones((1, 1, 1)))
+      R = tn.Node(np.ones((1, 1, 1)), backend=self.backend)
       self.right_envs[site] = R.tensor
 
-    R = tn.Node(self.right_envs[site])
+    R = tn.Node(self.right_envs[site], backend=self.backend)
 
     R[0] ^ mps[2]
     R[1] ^ conj_mps[2]
@@ -3341,12 +3343,12 @@ class OneBodyStoquastisizer:
       self.add_unitary_right(site, reference_mps, normalize=normalize)
 
   def get_environment(self, site, reference_mps):
-    L = tn.Node(self.left_envs[site])
-    R = tn.Node(self.right_envs[site])
-    mpo = tn.Node(self.mpo[site])
-    mps = tn.Node(reference_mps.get_tensor(site))
+    L = tn.Node(self.left_envs[site], backend=self.backend)
+    R = tn.Node(self.right_envs[site], backend=self.backend)
+    mpo = tn.Node(self.mpo[site], backend=self.backend)
+    mps = tn.Node(reference_mps.get_tensor(site), backend=self.backend)
     conj_mps = tn.conj(mps)
-    conj_gate = tn.conj(tn.Node(self.gates[site]))
+    conj_gate = tn.conj(tn.Node(self.gates[site], backend=self.backend))
 
     L[0] ^ mps[0]
     R[0] ^ mps[2]
@@ -3401,9 +3403,9 @@ class OneBodyStoquastisizer:
   def absorb_gates(self):
     final_mpo = copy.deepcopy(self.mpo)
     for site in range(len(self.mpo)):
-      mpo = tn.Node(self.mpo[site])
-      gate = tn.Node(self.gates[site])
-      conj_gate = tn.conj(tn.Node(self.gates[site]))
+      mpo = tn.Node(self.mpo[site], backend=self.backend)
+      gate = tn.Node(self.gates[site], backend=self.backend)
+      conj_gate = tn.conj(tn.Node(self.gates[site], backend=self.backend))
       mpo[2] ^ conj_gate[0]
       mpo[3] ^ gate[0]
       output_order = [mpo[0], mpo[1], conj_gate[1], gate[1]]
@@ -3575,9 +3577,9 @@ class TwoBodyStoquastisizer:
     """
     #TODO: contraction order probably not optimal. Fix this!
     if sites == (-1, 0):
-      L = tn.Node(np.ones((1, 1, 1)))
-      mps = tn.Node(mps_tensor)
-      mpo = tn.Node(self.mpo.get_tensor(sites[1]))
+      L = tn.Node(np.ones((1, 1, 1)), backend=self.backend)
+      mps = tn.Node(mps_tensor, backend=self.backend)
+      mpo = tn.Node(self.mpo.get_tensor(sites[1]), backend=self.backend)
       conj_mps = tn.conj(mps)
       L[0] ^ mps[0]
       L[1] ^ conj_mps[0]
@@ -3590,13 +3592,13 @@ class TwoBodyStoquastisizer:
       self.left_envs[(sites[0] + 1, sites[1] + 1)] = result.tensor
     else:
       site = sites[0]
-      gate = tn.Node(self.gates[sites])
-      mps = tn.Node(mps_tensor)
-      mpo = tn.Node(self.mpo.get_tensor(sites[1]))
+      gate = tn.Node(self.gates[sites], backend=self.backend)
+      mps = tn.Node(mps_tensor, backend=self.backend)
+      mpo = tn.Node(self.mpo.get_tensor(sites[1]), backend=self.backend)
       conj_mps = tn.conj(mps)
       conj_gate = tn.conj(gate)
 
-      L = tn.Node(self.left_envs[sites])
+      L = tn.Node(self.left_envs[sites], backend=self.backend)
       L[0] ^ mps[0]
       L[1] ^ conj_mps[0]
       L[2] ^ gate[2]
@@ -3640,9 +3642,9 @@ class TwoBodyStoquastisizer:
     """
     #TODO: contraction order probably not optimal. Fix this!
     if sites == (len(self.mpo) - 1, len(self.mpo)):
-      R = tn.Node(np.ones((1, 1, 1)))
-      mps = tn.Node(mps_tensor)
-      mpo = tn.Node(self.mpo.get_tensor(sites[0]))
+      R = tn.Node(np.ones((1, 1, 1)), backend=self.backend)
+      mps = tn.Node(mps_tensor, backend=self.backend)
+      mpo = tn.Node(self.mpo.get_tensor(sites[0]), backend=self.backend)
       conj_mps = tn.conj(mps)
       R[0] ^ mps[2]
       R[1] ^ conj_mps[2]
@@ -3654,13 +3656,13 @@ class TwoBodyStoquastisizer:
       result.reorder_edges(output_order)
       self.right_envs[(sites[0] - 1, sites[1] - 1)] = result.tensor
     else:
-      gate = tn.Node(self.gates[sites])
-      mps = tn.Node(mps_tensor)
-      mpo = tn.Node(self.mpo.get_tensor(sites[0]))
+      gate = tn.Node(self.gates[sites], backend=self.backend)
+      mps = tn.Node(mps_tensor, backend=self.backend)
+      mpo = tn.Node(self.mpo.get_tensor(sites[0]), backend=self.backend)
       conj_mps = tn.conj(mps)
       conj_gate = tn.conj(gate)
 
-      R = tn.Node(self.right_envs[sites])
+      R = tn.Node(self.right_envs[sites], backend=self.backend)
       R[0] ^ mps[2]
       R[1] ^ conj_mps[2]
       R[2] ^ gate[3]
@@ -3712,9 +3714,9 @@ class TwoBodyStoquastisizer:
                              normalize=normalize)
 
   def get_environment(self, sites):
-    L = tn.Node(self.left_envs[sites])
-    R = tn.Node(self.right_envs[sites])
-    conj_gate = tn.conj(tn.Node(self.gates[sites]))
+    L = tn.Node(self.left_envs[sites], backend=self.backend)
+    R = tn.Node(self.right_envs[sites], backend=self.backend)
+    conj_gate = tn.conj(tn.Node(self.gates[sites]), backend=self.backend)
 
     L[0] ^ R[0]
     L[1] ^ R[1]
@@ -3819,7 +3821,7 @@ class TwoBodyStoquastisizer:
     Absorb the gates in `Stoquastizizer.gates` into Stoquastizizer.mpo`.
     This can potentially result in very large bond dimensions of the resulting MPO
     """
-    gates = {k: tn.Node(v) for k, v in self.gates.items()}
+    gates = {k: tn.Node(v, backend=self.backend) for k, v in self.gates.items()}
     top_edges = {}
     bottom_edges = {}
     N = len(self.mpo)
@@ -3871,9 +3873,9 @@ class TwoBodyStoquastisizer:
     tensors[-1] = tf.expand_dims(tensors[-1], 1)
     final = []
     for site in range(len(self.mpo)):
-      gate = tn.Node(tensors[site])
+      gate = tn.Node(tensors[site], backend=self.backend)
       conj_gate = tn.conj(gate)
-      mpo = tn.Node(self.mpo[site])
+      mpo = tn.Node(self.mpo[site], backend=self.backend)
       gate[2] ^ mpo[3]
       conj_gate[2] ^ mpo[2]
       out_order = [
@@ -3922,14 +3924,14 @@ class TwoBodyStoquastisizer:
   def mat_vec(left_env, right_env, left_gate, right_gate, mpo_tensor, backend,
               site, mps_tensor):
     #TODO: contraction order probably not optimal. Fix this!
-    L = tn.Node(left_env)
-    R = tn.Node(right_env)
-    LGATE = tn.Node(left_gate)
+    L = tn.Node(left_env, backend=backend)
+    R = tn.Node(right_env, backend=backend)
+    LGATE = tn.Node(left_gate, backend=backend)
     CONJ_LGATE = tn.conj(LGATE)
-    RGATE = tn.Node(right_gate)
+    RGATE = tn.Node(right_gate, backend=backend)
     CONJ_RGATE = tn.conj(RGATE)
-    MPS = tn.Node(mps_tensor)
-    MPO = tn.Node(mpo_tensor)
+    MPS = tn.Node(mps_tensor, backend=backend)
+    MPO = tn.Node(mpo_tensor, backend=backend)
     if site % 2 == 1:
       L[0] ^ MPS[0]
       L[2] ^ LGATE[2]
