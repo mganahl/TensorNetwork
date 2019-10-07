@@ -3716,7 +3716,7 @@ class TwoBodyStoquastisizer:
   def get_environment(self, sites):
     L = tn.Node(self.left_envs[sites], backend=self.backend)
     R = tn.Node(self.right_envs[sites], backend=self.backend)
-    conj_gate = tn.conj(tn.Node(self.gates[sites]), backend=self.backend)
+    conj_gate = tn.conj(tn.Node(self.gates[sites], backend=self.backend))
 
     L[0] ^ R[0]
     L[1] ^ R[1]
