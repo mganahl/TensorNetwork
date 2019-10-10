@@ -3577,7 +3577,9 @@ class TwoBodyStoquastisizer:
     """
     #TODO: contraction order probably not optimal. Fix this!
     if sites == (-1, 0):
-      L = tn.Node(np.ones((1, 1, 1)), backend=self.backend)
+      L = tn.Node(
+          np.ones((1, 1, 1), dtype=mps_tensor.dtype.as_numpy_dtype),
+          backend=self.backend)
       mps = tn.Node(mps_tensor, backend=self.backend)
       mpo = tn.Node(self.mpo.get_tensor(sites[1]), backend=self.backend)
       conj_mps = tn.conj(mps)
@@ -3642,7 +3644,9 @@ class TwoBodyStoquastisizer:
     """
     #TODO: contraction order probably not optimal. Fix this!
     if sites == (len(self.mpo) - 1, len(self.mpo)):
-      R = tn.Node(np.ones((1, 1, 1)), backend=self.backend)
+      R = tn.Node(
+          np.ones((1, 1, 1), mps_tensor.dtype.as_numpy_dtype),
+          backend=self.backend)
       mps = tn.Node(mps_tensor, backend=self.backend)
       mpo = tn.Node(self.mpo.get_tensor(sites[0]), backend=self.backend)
       conj_mps = tn.conj(mps)
