@@ -20,6 +20,7 @@ import time
 import tensornetwork as tn
 import numpy as np
 import tensorflow as tf
+import pickle
 import experiments.MPS.Lanczos as LZ
 from sys import stdout
 from experiments.MPS import misc_mps
@@ -435,7 +436,8 @@ class DMRGUnitCellEngine(MPSSimulationBase):
                    verbose=0,
                    delta=1E-10,
                    deltaEta=1E-10,
-                   walltime_log=None):
+                   walltime_log=None,
+                   filename=None):
     """
         do a one-site DMRG optimzation for an open system
         Paramerters:
@@ -457,7 +459,7 @@ class DMRGUnitCellEngine(MPSSimulationBase):
         walltime_log:  callable or None
                        if not None, walltime_log is passed to do_lanczos, add_layer and prepare_tensor_QR to 
                        log runtimes
-
+       filename: optional string for checkpointing the mps
 
         """
 
@@ -497,6 +499,9 @@ class DMRGUnitCellEngine(MPSSimulationBase):
             landelta=delta,
             landeltaEta=deltaEta,
             verbose=verbose)
+      if filename:
+        with open(filename + '.pickle', 'wb') as f:
+          pickle.dump(self.mps, f)
 
       if np.abs(e - energy) < precision:
         converged = True

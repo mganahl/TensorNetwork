@@ -45,6 +45,33 @@ misc_mps.compile_decomps(
 Tensor = Any
 
 
+def get_energy(J1, J2, N1, N2, block_length):
+  dtype = tf.float64
+  mpo = OM.block_MPO(
+      MPOmodule.Finite2D_J1J2(J1, J2, N1, N2, dtype=dtype), block_length)
+  stoq = OM.TwoBodyStoquastisizer(mpo)
+  with open(args.load_gate_filename, 'rb') as f:
+    gates = pickle.load(f)
+  stoq.gates = gates
+  with open(args.load_mps_filename, 'rb') as f:
+    mps = pickle.load(f)
+  mps.position(0)
+  mps.position(len(mps))
+  mps.position(0)
+  stoq.compute_right_envs(mps)
+  n2 = tn.Node(stoq.right_envs[(-1, 0)])
+  n1 = tn.Node(stoq.left_envs[(-1, 0)])
+  n1[0] ^ n2[0]
+  n1[1] ^ n2[1]
+  n1[6] ^ n2[6]
+  n2[2] ^ n2[5]
+  n2[3] ^ n2[4]
+  n1[2] ^ n1[5]
+  n1[3] ^ n1[4]
+  e = tn.contract_trace_edges(n1 @ n2)
+  return e.tensor.numpy()
+
+
 def plot_grid_mpo(points):
   """
   plot a grid according to `points`.
@@ -3927,7 +3954,7 @@ class TwoBodyStoquastisizer:
   @staticmethod
   def mat_vec(left_env, right_env, left_gate, right_gate, mpo_tensor, backend,
               site, mps_tensor):
-    #TODO: contraction order probably not optimal. Fix this!
+
     L = tn.Node(left_env, backend=backend)
     R = tn.Node(right_env, backend=backend)
     LGATE = tn.Node(left_gate, backend=backend)
@@ -3956,7 +3983,6 @@ class TwoBodyStoquastisizer:
       R[6] ^ MPO[1]
 
       output_order = [L[1], CONJ_RGATE[2], R[1]]
-      t1 = time.time()
       out = (((((
           (L @ LGATE) @ CONJ_LGATE) @ MPO) @ MPS) @ RGATE) @ R) @ CONJ_RGATE
     else:
@@ -3980,7 +4006,6 @@ class TwoBodyStoquastisizer:
       R[6] ^ MPO[1]
 
       output_order = [L[1], CONJ_LGATE[3], R[1]]
-      t1 = time.time()
       out = (((((
           (R @ RGATE) @ CONJ_RGATE) @ MPO) @ MPS) @ LGATE) @ L) @ CONJ_LGATE
 
@@ -3995,7 +4020,8 @@ class TwoBodyStoquastisizer:
                          ncv=40,
                          delta=1E-8,
                          ndiag=10,
-                         verbose=0):
+                         verbose=0,
+                         reorthogonalize=False):
 
     if sweep_dir in (-1, 'r', 'right'):
       #site = mps.pos
@@ -4031,7 +4057,7 @@ class TwoBodyStoquastisizer:
           mps_tensor=mps_tensor)
 
     def dotprod(a, b):
-      return misc_mps.ncon([a, b], [[1, 2, 3], [1, 2, 3]])
+      return misc_mps.ncon([tf.math.conj(a), b], [[1, 2, 3], [1, 2, 3]])
 
     lin_op = tn.LinearOperator(
         matvec,
@@ -4046,7 +4072,8 @@ class TwoBodyStoquastisizer:
         ncv=ncv,
         numeig=1,
         tol=precision,
-        delta=delta)
+        delta=delta,
+        reorthogonalize=reorthogonalize)
     opt = eigvecs[0]
     e = eigvals[0]
     return e, opt

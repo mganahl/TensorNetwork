@@ -273,9 +273,9 @@ def eigsh_lanczos(A: LinearOperator,
     if ((it > 0) and (it % ndiag) == 0) and (len(diag_elements) >= numeig):
       #diagonalize the effective Hamiltonian
       A_tridiag = np.diag(diag_elements) + np.diag(
-          norms_vector_n[1:], 1) + np.diag(np.conj(norms_vector_n[1:]), -1)
+          norms_vector_n[1:], 1) + np.diag(norms_vector_n[1:], -1)
       eigvals, u = np.linalg.eigh(A_tridiag)
-      if first:
+      if not first:
         if np.linalg.norm(eigvals[0:numeig] - eigvalsold[0:numeig]) < tol:
           converged = True
       first = False
@@ -288,12 +288,12 @@ def eigsh_lanczos(A: LinearOperator,
     vector_n = A_vector_n
     it = it + 1
     if it >= ncv:
+      converged = False
       break
 
   A_tridiag = np.diag(diag_elements) + np.diag(norms_vector_n[1:], 1) + np.diag(
-      np.conj(norms_vector_n[1:]), -1)
-  eigvals, u = np.linalg.eigh(A_tridiag)
-
+      norms_vector_n[1:], -1)
+  eigvals, u = np.linalg.eigh(np.real(A_tridiag))
   eigenvectors = []
   if np.iscomplexobj(A_tridiag):
     eigvals = np.array(eigvals).astype(A_tridiag.dtype)

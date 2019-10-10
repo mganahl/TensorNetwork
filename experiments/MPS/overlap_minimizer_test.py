@@ -36,7 +36,7 @@ def test_matvec():
   mpo = MPO.Finite2D_J1J2(J1, J2, N1, N2, dtype=dtype)
   mpo_blocked = OM.block_MPO(mpo, block_length)
   stoq = OM.TwoBodyStoquastisizer(mpo_blocked)
-
+  stoq.reset_gates('haar')
   D = 4
   d = [mpo_blocked[0].shape[2]] * len(mpo_blocked)
   Ds = [D] * (len(mpo_blocked) - 1)
@@ -78,8 +78,70 @@ def test_matvec():
     Hx = matvec(t)
     for m in range(dim):
       t2 = np.reshape(basis[m, :], shape)
-      H[m, n] = tn.ncon([t2, Hx], [[1, 2, 3], [1, 2, 3]], backend='tensorflow')
+      H[m, n] = tn.ncon([t2, Hx], [[1, 2, 3], [1, 2, 3]],
+                        backend='tensorflow').numpy()
   assert np.linalg.norm(H - H.T) < 1E-10
+  eta, U = np.linalg.eigh(H)
+  stoq.position(mps, site)
+  e, opt = stoq._optimize_1s_local(
+      mps, site, sweep_dir='r', ncv=40, precision=1E-13, delta=1E-10)
+  np.testing.assert_allclose(e, min(eta))
+
+
+def test_matvec_complex():
+  J1, J2 = 1, 1
+  N1, N2 = 10, 10
+  dtype = tf.complex128
+  block_length = 2
+  mpo = MPO.Finite2D_J1J2(J1, J2, N1, N2, dtype=dtype)
+  mpo_blocked = OM.block_MPO(mpo, block_length)
+  stoq = OM.TwoBodyStoquastisizer(mpo_blocked)
+  stoq.reset_gates('haar')
+  D = 4
+  d = [mpo_blocked[0].shape[2]] * len(mpo_blocked)
+  Ds = [D] * (len(mpo_blocked) - 1)
+  mps = MPS.FiniteMPSCentralGauge.random(d=d, D=Ds, dtype=dtype)
+  mps.position(0)
+  mps.position(len(mps))
+  mps.position(0)
+  stoq.compute_right_envs(mps)
+
+  site = 4
+  stoq.position(mps, site)
+
+  L = stoq.left_envs[(site - 1, site)]  #contains the mps tensor site site - 1
+  R = stoq.right_envs[(site, site + 1)]  #contains the MPS tensor at site + 1
+  Lgate = stoq.gates[(site - 1, site)]
+  Rgate = stoq.gates[(site, site + 1)]
+  mpotensor = mpo_blocked[site]
+  shape = mps[site].shape
+  dim = np.prod(shape)
+
+  def matvec(mps_tensor):
+    return stoq.mat_vec(
+        L,
+        R,
+        Lgate,
+        Rgate,
+        mpo_tensor=mpo_blocked[site],
+        backend='tensorflow',
+        site=site,
+        mps_tensor=mps_tensor)
+
+  def dotprod(a, b):
+    return tn.ncon([tf.math.conj(a), b], [[1, 2, 3], [1, 2, 3]],
+                   backend='tensorflow')
+
+  H = np.zeros((dim, dim), dtype=dtype.as_numpy_dtype)
+  basis = np.eye(dim).astype(dtype.as_numpy_dtype)
+  for n in range(dim):
+    t = np.reshape(basis[n, :], shape)
+    Hx = matvec(t)
+    for m in range(dim):
+      t2 = np.reshape(basis[m, :], shape)
+      H[m, n] = tn.ncon([t2, Hx], [[1, 2, 3], [1, 2, 3]],
+                        backend='tensorflow').numpy()
+  assert np.linalg.norm(H - np.conj(H.T)) < 1E-10
   eta, U = np.linalg.eigh(H)
   stoq.position(mps, site)
   e, opt = stoq._optimize_1s_local(
