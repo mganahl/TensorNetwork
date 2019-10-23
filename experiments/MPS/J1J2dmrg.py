@@ -18,7 +18,7 @@ misc_mps.compile_decomps(
 )  #compiles matrix decomposition calls into graphs; use `True` for better performance
 tn.set_default_backend('tensorflow')
 
-parser = argparse.ArgumentParser(description='J1-J2 stoquastization')
+parser = argparse.ArgumentParser(description='regular DMRG for the J1-J2 model')
 parser.add_argument('--N1', type=int, help='height')
 parser.add_argument('--N2', type=int, help='width')
 parser.add_argument('--J1', type=float, help='nearest neighbor coupling')
