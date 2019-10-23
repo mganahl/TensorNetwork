@@ -36,6 +36,11 @@ parser.add_argument(
     action='store_true',
     help="If `True`, existing files will be overwritten (False)",
     default=False)
+parser.add_argument(
+    '--use_disk',
+    action='store_true',
+    help="If `True`, environment blocks will be stored on disk instead of memory (False)",
+    default=False)
 
 parser.add_argument(
     '--blocklength',
@@ -135,7 +140,7 @@ dtype = tf.float64
 
 mpo = OM.block_MPO(
     MPOmodule.Finite2D_J1J2(J1, J2, N1, N2, dtype=dtype), block_length)
-stoq = OM.TwoBodyStoquastisizer(mpo)
+stoq = OM.TwoBodyStoquastisizer(mpo, use_disk=args.use_disk)
 ds = [t.shape[3] for t in mpo._tensors]
 ref_mps = MPSmodule.FiniteMPSCentralGauge(
     tensors=pv.equal_superposition_tf(ds, dtype=dtype))
@@ -180,7 +185,8 @@ if args.num_dmrg_sweeps > 0:
       precision=args.dmrg_precision,
       verbose=args.verbosity,
       ncv=args.ncv,
-      filename=args.save_mps_filename)
+      filename=args.save_mps_filename,
+      use_disk=args.use_disk)
 
   #========================== save mps ====================================
   with open(args.save_mps_filename + '.pickle', 'wb') as f:
