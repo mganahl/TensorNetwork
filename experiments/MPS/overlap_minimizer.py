@@ -17,6 +17,7 @@ from __future__ import division
 from __future__ import print_function
 import sys
 import copy
+import os
 import pickle
 import time
 import tensornetwork as tn
@@ -43,7 +44,6 @@ misc_mps.compile_decomps(
 )  #compiles matrix decomposition calls into graphs; use `True` for better performance
 
 Tensor = Any
-
 
 
 def plot_grid_mpo(points):
@@ -142,10 +142,11 @@ def block_MPO(mpo, block_length, backend='tensorflow'):
         tf.reshape(node.tensor, (M1, M2, 2**block_length, 2**block_length)))
   return MPO.FiniteMPO(tensors)
 
-def get_energy(J1, J2, N1, N2, block_length, load_gate_filename, load_mps_filename):
+
+def get_energy(J1, J2, N1, N2, block_length, load_gate_filename,
+               load_mps_filename):
   dtype = tf.float64
-  mpo = block_MPO(
-      MPO.Finite2D_J1J2(J1, J2, N1, N2, dtype=dtype), block_length)
+  mpo = block_MPO(MPO.Finite2D_J1J2(J1, J2, N1, N2, dtype=dtype), block_length)
   stoq = TwoBodyStoquastisizer(mpo)
   with open(load_gate_filename, 'rb') as f:
     gates = pickle.load(f)
@@ -3471,11 +3472,50 @@ class OneBodyStoquastisizer:
 
 class TwoBodyStoquastisizer:
 
+  class Environment:
+
+    def __init__(self, name, backend, use_disk, default_key, default_value):
+      self.name = name
+      self.use_disk = use_disk
+      self.envs = {}
+      self.backend = backend
+      self.default_key = default_key
+      self.default_value = default_value
+      self.filenames = set()
+
+    def __getitem__(self, key):
+      if key == self.default_key:
+        return self.default_value
+      if not self.use_disk:
+        return self.envs[key]
+      return self.backend.convert_to_tensor(
+          np.load(self.name + '_' + str(key) + '.npy'))
+
+    def __setitem__(self, key, value):
+      if not self.use_disk:
+        self.envs[key] = value
+      else:
+        filename = self.name + '_' + str(key)
+        self.filenames.add(filename + '.npy')
+        np.save(filename, value)
+
+    def __delitem__(self, key):
+      if not self.use_disk:
+        del self.envs[key]
+
+    def cleanup(self):
+      for filename in self.filenames:
+        try:
+          os.remove(filename)
+        except FileNotFoundError:
+          pass
+
   def __init__(self,
                mpo,
                gates=None,
                name='TwoBodyStoquastisizer',
-               backend='tensorflow'):
+               backend='tensorflow',
+               use_disk=False):
     """
         uses a unitary circuit with three layers:
         the first layer 1 contains `N/2` two-body unitaries on sites (site1, site2) with site1 even 
@@ -3580,17 +3620,45 @@ class TwoBodyStoquastisizer:
     dim = self.mpo[-1].shape[2]
     self.gates[(len(self.mpo) - 1, len(self.mpo))] = be.reshape(
         be.eye(dim), (dim, 1, dim, 1))
+
     #right_envs[(site-1, site)] contains the mps tensor at site `site`
-    self.right_envs = {
-        (len(self.mpo) - 1, len(self.mpo)): be.ones((1, 1, 1, 1, 1, 1, 1))
-    }
+    self.right_envs = self.Environment(
+        name='right_env_' + name,
+        backend=be,
+        use_disk=use_disk,
+        default_key=(len(self.mpo) - 1, len(self.mpo)),
+        default_value=be.ones((1, 1, 1, 1, 1, 1, 1)))
+    # self.right_envs = {
+    #     (len(self.mpo) - 1, len(self.mpo)): be.ones((1, 1, 1, 1, 1, 1, 1))
+    # }
     #left_envs[(site, site + 1)] contains the mps tensor at site `site`
-    self.left_envs = {(-1, 0): be.ones((1, 1, 1, 1, 1, 1, 1))}
+    self.left_envs = self.Environment(
+        name='left_env_' + name,
+        backend=be,
+        use_disk=use_disk,
+        default_key=(-1, 0),
+        default_value=be.ones((1, 1, 1, 1, 1, 1, 1)))
+
+    self.left_envs[(-1, 0)] = be.ones((1, 1, 1, 1, 1, 1, 1))
+    #self.left_envs = {(-1, 0): be.ones((1, 1, 1, 1, 1, 1, 1))}
+
+  @property
+  def use_disk(self):
+    if self.left_envs.use_disk != self.right_envs.use_disk:
+      raise ValueError("left_envs and right_envs have"
+                       "different values for use_disk")
+    return self.left_envs.use_disk
+
+  @use_disk.setter
+  def use_disk(self, use_disk):
+    self.left_envs.use_disk = use_disk
+    self.right_envs.use_disk = use_disk
 
   def add_unitary_left(self,
                        sites: Tuple[int, int],
                        mps_tensor: Tensor,
-                       normalize: Optional[bool] = False) -> None:
+                       normalize: Optional[bool] = False,
+                       save: Optional[bool] = False) -> None:
     """
     add unitary gate at site `sites` to an L-expression. This adds the 
     `mps_tensor` to the L expresssion.
@@ -3601,6 +3669,7 @@ class TwoBodyStoquastisizer:
         any center-matrix, i.e. it should be obtained from 
         `FiniteMPSCentralGauge.get_tensor(sites[1])`
       normalize: If `True`, normalize L expressions
+      save: if `True`, save the L-expression to disk instead of storing it in memory
     """
     #TODO: contraction order probably not optimal. Fix this!
     if sites == (-1, 0):
@@ -3949,6 +4018,8 @@ class TwoBodyStoquastisizer:
 
         stdout.write("\r step %i/%i cost: %.6E" % (step + 1, num_steps, cost))
         stdout.flush()
+    self.left_envs.cleanup()
+    self.right_envs.cleanup()
     return True
 
   @staticmethod
@@ -4122,9 +4193,11 @@ class TwoBodyStoquastisizer:
               ncv=40,
               delta=1E-10,
               verbose=0,
-              filename=None):
+              filename=None,
+              use_disk=False):
     mps.position(0)
     #delete the old left environments
+    self.use_disk = use_disk
     for site in range(len(mps)):
       try:
         del self.left_envs[(site, site + 1)]
@@ -4184,4 +4257,6 @@ class TwoBodyStoquastisizer:
         with open(filename + '.pickle', 'wb') as f:
           pickle.dump(mps, f)
       sweep += 1
+    self.left_envs.cleanup()
+    self.right_envs.cleanup()
     return e
