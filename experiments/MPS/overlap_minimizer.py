@@ -45,32 +45,6 @@ misc_mps.compile_decomps(
 Tensor = Any
 
 
-def get_energy(J1, J2, N1, N2, block_length):
-  dtype = tf.float64
-  mpo = OM.block_MPO(
-      MPOmodule.Finite2D_J1J2(J1, J2, N1, N2, dtype=dtype), block_length)
-  stoq = OM.TwoBodyStoquastisizer(mpo)
-  with open(args.load_gate_filename, 'rb') as f:
-    gates = pickle.load(f)
-  stoq.gates = gates
-  with open(args.load_mps_filename, 'rb') as f:
-    mps = pickle.load(f)
-  mps.position(0)
-  mps.position(len(mps))
-  mps.position(0)
-  stoq.compute_right_envs(mps)
-  n2 = tn.Node(stoq.right_envs[(-1, 0)])
-  n1 = tn.Node(stoq.left_envs[(-1, 0)])
-  n1[0] ^ n2[0]
-  n1[1] ^ n2[1]
-  n1[6] ^ n2[6]
-  n2[2] ^ n2[5]
-  n2[3] ^ n2[4]
-  n1[2] ^ n1[5]
-  n1[3] ^ n1[4]
-  e = tn.contract_trace_edges(n1 @ n2)
-  return e.tensor.numpy()
-
 
 def plot_grid_mpo(points):
   """
@@ -167,6 +141,32 @@ def block_MPO(mpo, block_length, backend='tensorflow'):
     tensors.append(
         tf.reshape(node.tensor, (M1, M2, 2**block_length, 2**block_length)))
   return MPO.FiniteMPO(tensors)
+
+def get_energy(J1, J2, N1, N2, block_length):
+  dtype = tf.float64
+  mpo = block_MPO(
+      MPOmodule.Finite2D_J1J2(J1, J2, N1, N2, dtype=dtype), block_length)
+  stoq = TwoBodyStoquastisizer(mpo)
+  with open(args.load_gate_filename, 'rb') as f:
+    gates = pickle.load(f)
+  stoq.gates = gates
+  with open(args.load_mps_filename, 'rb') as f:
+    mps = pickle.load(f)
+  mps.position(0)
+  mps.position(len(mps))
+  mps.position(0)
+  stoq.compute_right_envs(mps)
+  n2 = tn.Node(stoq.right_envs[(-1, 0)])
+  n1 = tn.Node(stoq.left_envs[(-1, 0)])
+  n1[0] ^ n2[0]
+  n1[1] ^ n2[1]
+  n1[6] ^ n2[6]
+  n2[2] ^ n2[5]
+  n2[3] ^ n2[4]
+  n1[2] ^ n1[5]
+  n1[3] ^ n1[4]
+  e = tn.contract_trace_edges(n1 @ n2)
+  return e.tensor.numpy()
 
 
 def generate_probability_mps(mps):
