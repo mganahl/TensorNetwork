@@ -142,15 +142,15 @@ def block_MPO(mpo, block_length, backend='tensorflow'):
         tf.reshape(node.tensor, (M1, M2, 2**block_length, 2**block_length)))
   return MPO.FiniteMPO(tensors)
 
-def get_energy(J1, J2, N1, N2, block_length):
+def get_energy(J1, J2, N1, N2, block_length, load_gate_filename, load_mps_filename):
   dtype = tf.float64
   mpo = block_MPO(
-      MPOmodule.Finite2D_J1J2(J1, J2, N1, N2, dtype=dtype), block_length)
+      MPO.Finite2D_J1J2(J1, J2, N1, N2, dtype=dtype), block_length)
   stoq = TwoBodyStoquastisizer(mpo)
-  with open(args.load_gate_filename, 'rb') as f:
+  with open(load_gate_filename, 'rb') as f:
     gates = pickle.load(f)
   stoq.gates = gates
-  with open(args.load_mps_filename, 'rb') as f:
+  with open(load_mps_filename, 'rb') as f:
     mps = pickle.load(f)
   mps.position(0)
   mps.position(len(mps))
