@@ -63,4 +63,4 @@ N1, N2 = args.N1, args.N2
 block_length = args.blocklength
 
 print('(N1={}, N2={}, j1={}, j2={}): energy = {}'.format(
-    N1, N2, args.J1, args.J2, OM.get_energy(J1, J2, N1, N2, block_length)))
+    N1, N2, args.J1, args.J2, OM.get_energy(J1, J2, N1, N2, block_length, args.load_gate_filename, args.load_mps_filename)))
