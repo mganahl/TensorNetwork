@@ -3623,7 +3623,7 @@ class TwoBodyStoquastisizer:
 
     #right_envs[(site-1, site)] contains the mps tensor at site `site`
     self.right_envs = self.Environment(
-        name='right_env_' + name,
+        name=name + 'right_env_',
         backend=be,
         use_disk=use_disk,
         default_key=(len(self.mpo) - 1, len(self.mpo)),
@@ -3633,7 +3633,7 @@ class TwoBodyStoquastisizer:
     # }
     #left_envs[(site, site + 1)] contains the mps tensor at site `site`
     self.left_envs = self.Environment(
-        name='left_env_' + name,
+        name=name + 'left_env_',
         backend=be,
         use_disk=use_disk,
         default_key=(-1, 0),
@@ -4188,16 +4188,34 @@ class TwoBodyStoquastisizer:
 
   def do_dmrg(self,
               mps,
-              num_sweeps,
-              precision=1E-6,
-              ncv=40,
-              delta=1E-10,
-              verbose=0,
-              filename=None,
-              use_disk=False):
+              num_sweeps: int,
+              precision: float = 1E-6,
+              ncv: int = 40,
+              delta: float = 1E-10,
+              verbose: int = 0,
+              filename: str = None,
+              use_disk: bool = False):
+    """
+    Do a dmrg optimization to get the GS of the stoquastizized Hamiltonian.
+    Args:
+      mps: an MPS
+      num_sweeps: number of dmrg sweeps
+      precision: desired precision at which to stop dmrg 
+      ncv: number of Krylov vectors
+      delta: lanczos parameter
+      verbose: verbosity flag
+      filename: the filename where data should be stored 
+      use_disk: if `True`, store environments to disk and load them 
+        from disk during the DMRG, instead of storing them in memory.
+        The environments are stored in files of the format
+        `filename` + 'left_envs_' + other-data +'.npy', where other-data
+        is some additional data to uniquely store the environments.
+    """
     mps.position(0)
     #delete the old left environments
     self.use_disk = use_disk
+    self.left_envs.name = filename + 'left_envs_'
+    self.right_envs.name = filename + 'right_envs_'
     for site in range(len(mps)):
       try:
         del self.left_envs[(site, site + 1)]
