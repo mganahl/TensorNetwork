@@ -140,7 +140,8 @@ dtype = tf.float64
 
 mpo = OM.block_MPO(
     MPOmodule.Finite2D_J1J2(J1, J2, N1, N2, dtype=dtype), block_length)
-stoq = OM.TwoBodyStoquastisizer(mpo, use_disk=args.use_disk)
+stoq = OM.TwoBodyStoquastisizer(
+    mpo, name=args.save_gate_filename, use_disk=args.use_disk)
 ds = [t.shape[3] for t in mpo._tensors]
 ref_mps = MPSmodule.FiniteMPSCentralGauge(
     tensors=pv.equal_superposition_tf(ds, dtype=dtype))
