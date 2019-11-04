@@ -1095,8 +1095,8 @@ class MPSUnitCellCentralGauge(AbstractMPSUnitCell):
     """Returns a vector of all bond dimensions.
         The vector will have length `N+1`, where `N  ==  num_sites`."""
     ts = self._tensors
-    return (
-        [tf.shape(ts[0])[0]] + [tf.shape(ts[n])[2] for n in range(len(self))])
+    return ([tf.shape(ts[0])[0]] +
+            [tf.shape(ts[n])[2] for n in range(len(self))])
 
   @property
   def d(self):
@@ -1595,7 +1595,9 @@ class FiniteMPSCentralGauge(MPSUnitCellCentralGauge, AbstractFiniteMPS):
       Args:
         sigma (tf.Tensor of shape (n_samples, N):  basis configuration
       Returns:
-        tf.Tensor of shape (n_samples): the amplitudes
+        (phases, log_abs_amplitudes)
+        phases (tf.Tensor of shape (n_samples, N)): the phase of the amplitudes
+        log_abs_amplitudes (tf.Tensor of shape (n_samples, N)): the log-abs amplitudes
 
       """
     ds = self.d
