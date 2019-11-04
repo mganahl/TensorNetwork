@@ -155,8 +155,8 @@ def analyze_positivity(mps,
       plt.clf()
       plt.title(r'log-amplitudes; min ($\log$(amps))={0}, max($\log$(amp))={1}'
                 .format(
-                    np.round(np.min(log_amps), 2), np.round(
-                        np.max(log_amps), 2)))
+                    np.round(np.min(log_amps), 2),
+                    np.round(np.max(log_amps), 2)))
       plt.hist(-signs * log_amps, bins=bins)
       plt.xlabel(r'-Sign(amp) $\log (\vert$amp$\vert)$')
       plt.ylabel('frequency')
@@ -165,7 +165,7 @@ def analyze_positivity(mps,
       plt.show()
       plt.pause(0.01)
     av_sign = np.mean(signs)
-    av_amp = np.mean(np.exp(log_amps * signs))
+    av_amp = np.mean(np.exp(log_amps) * signs)
     if print_out:
       print()
       print('#############################')
@@ -199,8 +199,8 @@ def analyze_positivity(mps,
       ax = plt.subplot(2, 1, 1)
       plt.title(r'log-amplitudes; min ($\log$(amps))={0}, max($\log$(amp))={1}'
                 .format(
-                    np.round(np.min(log_amps), 2), np.round(
-                        np.max(log_amps), 2)))
+                    np.round(np.min(log_amps), 2),
+                    np.round(np.max(log_amps), 2)))
       plt.hist(np.real(np.exp(log_amps) * phases), bins=bins)
       plt.xlabel(r'$\Re(amp)$')
       plt.ylabel('frequency')
