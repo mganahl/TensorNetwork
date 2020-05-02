@@ -89,6 +89,7 @@ class FiniteMPS(BaseMPS):
              d: List[int],
              D: List[int],
              dtype: Type[np.number],
+             canonicalize: Optional[bool] = True,
              backend: Optional[Text] = None):
     """Initialize a random `FiniteMPS`. The resulting state is normalized. Its
     center-position is at 0.
@@ -111,7 +112,11 @@ class FiniteMPS(BaseMPS):
     tensors = [
         be.randn((D[n], d[n], D[n + 1]), dtype=dtype) for n in range(len(d))
     ]
-    return cls(tensors=tensors, center_position=0, backend=backend)
+    return cls(
+        tensors=tensors,
+        center_position=0,
+        canonicalize=canonicalize,
+        backend=backend)
 
   # pylint: disable=arguments-differ
   def canonicalize(self, normalize: Optional[bool] = True) -> np.number:
