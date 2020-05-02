@@ -23,6 +23,7 @@ from tensornetwork.matrixproductstates.base_mps import BaseMPS
 from tensornetwork.matrixproductstates.mpo import BaseMPO
 from tensornetwork import ncon
 from sys import stdout
+import time
 from typing import Any, Text, Union
 Tensor = Any
 
@@ -49,6 +50,7 @@ class BaseDMRG:
       TypeError: If mps and mpo have different backends.
       ValueError: If len(mps) != len(mpo).
      """
+    self.timings = {'lanczos': [], 'left-qr': [], 'right-qr': [], 'total': []}
     if not mps.backend.name == mpo.backend.name:
       raise TypeError(
           'mps.backend.name={} is different from mpo.backend.name={}.'.format(
@@ -96,6 +98,9 @@ class BaseDMRG:
 
     self.single_site_matvec = self.backend.make_passable_to_jit(
         self.backend.jit(_single_site_matvec))
+
+  def reset_timings(self):
+    self.timings = {'lanczos': [], 'left-qr': [], 'right-qr': [], 'total': []}
 
   def __len__(self):
     """
@@ -193,11 +198,13 @@ class BaseDMRG:
                          delta=1E-6,
                          ndiag=10,
                          verbose=0):
+    t0 = time.time()
     site = self.mps.center_position
     initial = self.mps.tensors[self.mps.center_position]
     #note: some backends will jit functions
     self.left_envs[site]
     self.right_envs[site]
+    t1 = time.time()
     energies, states = self.backend.eigsh_lanczos(
         A=self.single_site_matvec,
         args=[
@@ -210,12 +217,20 @@ class BaseDMRG:
         delta=delta,
         ndiag=ndiag,
         reorthogonalize=False)
+    if self.backend.name == 'jax':
+      states[0].block_until_ready()
+    self.timings['lanczos'].append(time.time() - t1)
     local_ground_state = states[0]
     energy = energies[0]
     local_ground_state /= self.backend.norm(local_ground_state)
 
     if sweep_dir in ('r', 'right'):
+      t1 = time.time()
       Q, R = self.mps.qr_decomposition(local_ground_state)
+      if self.backend.name == 'jax':
+        Q.block_until_ready()
+
+      self.timings['right-qr'].append(time.time() - t1)
       self.mps.tensors[site] = Q
       if site < len(self.mps.tensors) - 1:
         self.mps.center_position += 1
@@ -225,7 +240,12 @@ class BaseDMRG:
                                                        self.mpo.tensors[site])
 
     elif sweep_dir in ('l', 'left'):
+      t1 = time.time()
       R, Q = self.mps.rq_decomposition(local_ground_state)
+      if self.backend.name == 'jax':
+        Q.block_until_ready()
+
+      self.timings['left-qr'].append(time.time() - t1)
       self.mps.tensors[site] = Q
       if site > 0:
         self.mps.center_position -= 1
@@ -233,7 +253,9 @@ class BaseDMRG:
             self.mps.tensors[site - 1], R)
         self.right_envs[site - 1] = self.add_right_layer(
             self.right_envs[site], Q, self.mpo.tensors[site])
-
+    if self.backend.name == 'jax':
+      energy.block_until_ready()
+    self.timings['total'].append(time.time() - t0)
     return energy
 
   def run_one_site(self,
@@ -323,7 +345,7 @@ class BaseDMRG:
                           ndiag=10):
     converged = False
     final_energy = 1E100
-    iteration = 0
+    iteration = 1
     initial_site = start
     self.mps.position(start)  #move center position to the left end
     self.compute_left_envs()
@@ -363,8 +385,6 @@ class BaseDMRG:
             verbose=verbose)
         print_msg(site=self.mps.center_position)
 
-      if np.abs(final_energy - energy) < precision:
-        converged = True
       final_energy = energy
       iteration += 1
       if iteration > num_sweeps:
