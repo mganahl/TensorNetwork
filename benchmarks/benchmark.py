@@ -43,5 +43,5 @@ for dtype in [np.float64, np.float32]:
     with open(
         'second_run_gpu_timings_D{}_N_{}_dtype{}.pickle'.format(
             D, N,
-            np.dtytpe(dtype).name), 'wb') as f:
+            np.dtype(dtype).name), 'wb') as f:
       pickle.dump(dmrg.timings, f)
