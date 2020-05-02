@@ -26,7 +26,10 @@ for dtype in [np.float64, np.float32]:
         num_krylov_vecs=10,
         delta=1E-16,
         tol=1E-16)
-    with open('first_run_gpu_timings_D{D}_N_{N}.pickle', 'wb') as f:
+    with open(
+        'first_run_gpu_timings_D{}_N_{}_dtype{}.pickle'.format(
+            D, N,
+            np.dtype(dtype).name), 'wb') as f:
       pickle.dump(dmrg.timings, f)
     dmrg.reset_timings()
     dmrg.run_one_site_timing(
@@ -37,5 +40,8 @@ for dtype in [np.float64, np.float32]:
         num_krylov_vecs=10,
         delta=1E-16,
         tol=1E-16)
-    with open('second_run_gpu_timings_D{D}_N_{N}.pickle', 'wb') as f:
+    with open(
+        'second_run_gpu_timings_D{}_N_{}_dtype{}.pickle'.format(
+            D, N,
+            np.dtytpe(dtype).name), 'wb') as f:
       pickle.dump(dmrg.timings, f)
