@@ -5,14 +5,14 @@ import numpy as np
 import jax
 import pickle
 import jax.config as config
-config.update("jax_enable_x64", True)
+config.update("jax_enable_x64", False)
 backend = 'jax'
 tn.set_default_backend(backend)
 N = 30
 Jz = np.ones(N - 1)
 Jxy = np.ones(N - 1)
 Bz = np.zeros(N)
-for dtype in [np.float64, np.float32]:
+for dtype in [np.float32]:
   mpo = FiniteXXZ(Jz, Jxy, Bz, dtype=dtype)
   for D in [32, 64, 128, 256, 512, 1024, 2048, 4096]:
     mps = tn.FiniteMPS.random(
