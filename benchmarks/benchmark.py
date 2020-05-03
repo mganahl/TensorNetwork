@@ -27,7 +27,7 @@ for dtype in [np.float32]:
         delta=1E-16,
         tol=1E-16)
     with open(
-        'first_run_gpu_timings_D{}_N_{}_dtype{}.pickle'.format(
+        'first_run_timings_D{}_N_{}_dtype{}.pickle'.format(
             D, N,
             np.dtype(dtype).name), 'wb') as f:
       pickle.dump(dmrg.timings, f)
@@ -41,7 +41,7 @@ for dtype in [np.float32]:
         delta=1E-16,
         tol=1E-16)
     with open(
-        'second_run_gpu_timings_D{}_N_{}_dtype{}.pickle'.format(
+        'second_run_timings_D{}_N_{}_dtype{}.pickle'.format(
             D, N,
             np.dtype(dtype).name), 'wb') as f:
       pickle.dump(dmrg.timings, f)
