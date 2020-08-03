@@ -215,7 +215,7 @@ class SymmetricBackend(abstract_backend.AbstractBackend):
         to memory clutter and/or overflow.
 
     Returns:
-       `np.ndarray`: An array of `numeig` lowest eigenvalues
+       `BlockSparseTensor`: An array of `numeig` lowest eigenvalues
        `list`: A list of `numeig` lowest eigenvectors
     """
 
@@ -450,6 +450,54 @@ class SymmetricBackend(abstract_backend.AbstractBackend):
 
     return eigvals[0:numeig], eigenvectors
 
+
+  def gmres(self,
+            A_mv: Callable,
+            b: BlockSparseTensor,
+            A_args: Optional[List] = None,
+            A_kwargs: Optional[dict] = None,
+            x0: Optional[BlockSparseTensor] = None,
+            tol: float = 1E-05,
+            atol: Optional[float] = 1E-6,
+            num_krylov_vectors: Optional[int] = None,
+            maxiter: Optional[int] = 1,
+            M: Optional[Callable] = None
+            ) -> Tuple[BlockSparseTensor, int]:
+    
+    if x0 is not None:
+      if x0.sparse_shape != b.sparse_shape:
+        errstring = (f"If x0 is supplied, its shape, {x0.shape}, must match b's"
+                     f", {b.shape}.")
+        raise ValueError(errstring)
+      if x0.dtype != b.dtype:
+        errstring = (f"If x0 is supplied, its dtype, {x0.dtype}, must match b's"
+                     f", {b.dtype}.")
+        raise ValueError(errstring)
+      x0 = x0.ravel()
+
+
+    if num_krylov_vectors is None:
+      num_krylov_vectors = b.size
+    elif num_krylov_vectors <= 0 or num_krylov_vectors > b.size:
+      errstring = (f"num_krylov_vectors must be in "
+                   f"0 < {num_krylov_vectors} <= {b.size}.")
+      raise ValueError(errstring)
+
+    if tol < 0:
+      raise ValueError(f"tol = {tol} must be positive.")
+
+    if atol is None:
+      atol = tol
+    elif atol < 0:
+      raise ValueError(f"atol = {atol} must be positive.")
+
+    if A_args is None:
+      A_args = []
+    if A_kwargs is None:
+      A_kwargs = {}
+    
+
+    
   def addition(self, tensor1: Tensor, tensor2: Tensor) -> Tensor:
     return tensor1 + tensor2
 
