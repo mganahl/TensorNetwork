@@ -459,26 +459,17 @@ class SymmetricBackend(abstract_backend.AbstractBackend):
             x0: Optional[BlockSparseTensor] = None,
             tol: float = 1E-05,
             atol: Optional[float] = 1E-6,
-            num_krylov_vectors: Optional[int] = None,
+            num_krylov_vectors: int = 10,
             maxiter: Optional[int] = 1,
             M: Optional[Callable] = None
             ) -> Tuple[BlockSparseTensor, int]:
     
     if x0 is not None:
-      if x0.sparse_shape != b.sparse_shape:
-        errstring = (f"If x0 is supplied, its shape, {x0.shape}, must match b's"
-                     f", {b.shape}.")
-        raise ValueError(errstring)
       if x0.dtype != b.dtype:
-        errstring = (f"If x0 is supplied, its dtype, {x0.dtype}, must match b's"
-                     f", {b.dtype}.")
-        raise ValueError(errstring)
-      x0 = x0.ravel()
+        raise ValueError(f"x0.dtype = {x0.dtype} does not"
+                         f" match b.dtype = {b.dtype}")
 
-
-    if num_krylov_vectors is None:
-      num_krylov_vectors = b.size
-    elif num_krylov_vectors <= 0 or num_krylov_vectors > b.size:
+    if num_krylov_vectors <= 0 or num_krylov_vectors > b.size:
       errstring = (f"num_krylov_vectors must be in "
                    f"0 < {num_krylov_vectors} <= {b.size}.")
       raise ValueError(errstring)
