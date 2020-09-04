@@ -353,51 +353,60 @@ def _implicitly_restarted_arnoldi(jax: types.ModuleType) -> Callable:
   # ######################################################
   # #######  NEW SORTING FUCTIONS INSERTED HERE  #########
   # ######################################################
-  @functools.partial(jax.jit, static_argnums=(1,))
-  def LR_sort(evals, p):
-    inds = np.argsort(jax.numpy.real(evals), kind='stable')[::-1]
+  @functools.partial(jax.jit, static_argnums=(0,))
+  def LR_sort(p, evals):
+    inds = jax.numpy.argsort(jax.numpy.real(evals), kind='stable')[::-1]
     shifts = evals[inds][-p:]
     return shifts, inds
 
-  @functools.partial(jax.jit, static_argnums=(1,))
-  def LM_sort(evals, p):
-    inds = np.argsort(jax.numpy.abs(evals), kind='stable')[::-1]
+  @functools.partial(jax.jit, static_argnums=(0,))
+  def LM_sort(p, evals):
+    inds = jax.numpy.argsort(jax.numpy.abs(evals), kind='stable')[::-1]
     shifts = evals[inds][-p:]
     return shifts, inds
 
   # #######################################################
   # #######################################################
   # #######################################################
-  @functools.partial(jax.jit, static_argnums=(4, 5, 6))
-  def shifted_QR(Vm, Hm, fm, evals, k, p, which, res_thresh):
-    funs = [LR_sort, LM_sort]
-    shifts, _ = funs[which](evals, p)
-    # compress to k = numeig
+
+  #@functools.partial(jax.jit, static_argnums=(4, 5, 6, 7))
+  def shifted_QR(Vm, Hm, fm, evals, numeig, p, res_thresh,
+                 sort_fun):
+    ######################################################
+    #######  NEW SORTING FUCTIONS INSERTED HERE  #########
+    ######################################################
+    ######################################################
+    ######################################################
+    shifts, _ = sort_fun(evals)
+    # compress to numeig
     q = jax.numpy.zeros(Hm.shape[0])
     q = jax.ops.index_update(q, jax.ops.index[-1], 1)
     m = Hm.shape[0]
-
     for shift in shifts:
       Qj, _ = jax.numpy.linalg.qr(Hm - shift * jax.numpy.eye(m))
       Hm = Qj.T.conj() @ Hm @ Qj
       Vm = Qj.T @ Vm
       q = q @ Qj
 
-    fk = Vm[k, :] * Hm[k, k - 1] + fm * q[k - 1]
-    Vk = Vm[0:k, :]
-    Hk = Hm[0:k, 0:k]
-    H = jax.numpy.zeros((k + p + 1, k + p), dtype=fm.dtype)
-    H = jax.ops.index_update(H, jax.ops.index[0:k, 0:k], Hk)
+    fk = Vm[numeig, :] * Hm[numeig, numeig - 1] + fm * q[numeig - 1]
+    #Vk = Vm[0:numeig, :]
+    #Hk = Hm[0:numeig, 0:numeig]
+    #H = jax.numpy.zeros((numeig + p + 1, numeig + p), dtype=fm.dtype)
+    #H = jax.ops.index_update(H, jax.ops.index[0:numeig, 0:numeig], Hk)
     Z = jax.numpy.linalg.norm(fk)
     v = fk / Z
-    krylov_vectors = jax.numpy.zeros((k + p + 1, Vm.shape[1]), dtype=fm.dtype)
-    krylov_vectors = jax.ops.index_update(krylov_vectors, jax.ops.index[0:k, :],
-                                          Vk)
-    krylov_vectors = jax.ops.index_update(krylov_vectors, jax.ops.index[k:], v)
+    #krylov_vectors = jax.numpy.zeros((numeig + p + 1, Vm.shape[1]),
+    #                                 dtype=fm.dtype)
+    #krylov_vectors = jax.ops.index_update(krylov_vectors,
+    #                                      jax.ops.index[0:numeig, :], Vk)
+    # krylov_vectors = jax.ops.index_update(krylov_vectors,
+    #                                       jax.ops.index[numeig], v)
+    Vm = jax.ops.index_update(Vm, jax.ops.index[numeig, :], v)
+    
     Z = jax.numpy.linalg.norm(fk)
     #if fk is a zero-vector then arnoldi has exactly converged.
     #use small threshold to check this
-    return krylov_vectors, H, fk, Z < res_thresh
+    return Vm, Hm, fk, Z < res_thresh
 
   @functools.partial(jax.jit, static_argnums=(2,))
   def update_data(Vm_tmp, Hm_tmp, numits):
@@ -425,10 +434,11 @@ def _implicitly_restarted_arnoldi(jax: types.ModuleType) -> Callable:
     state_vectors = state_vectors / state_norms[:, None]
     return state_vectors
 
-
+  @functools.partial(jax.jit, static_argnums=(3, 4, 5, 6, 7, 8))
   def implicitly_restarted_arnoldi_method(
       matvec, args, initial_state, num_krylov_vecs, numeig, which, eps, maxiter,
       res_thresh) -> Tuple[List[Tensor], List[Tensor]]:
+
     """
     Implicitly restarted arnoldi factorization of `matvec`. The routine
     finds the lowest `numeig` eigenvector-eigenvalue pairs of `matvec`
@@ -455,13 +465,13 @@ def _implicitly_restarted_arnoldi(jax: types.ModuleType) -> Callable:
     Returns:
       eta, U: Two lists containing eigenvalues and eigenvectors.
     """
-    N = np.prod(initial_state.shape)
+    #N = np.prod(initial_state.shape)
+    #num_krylov_vecs = min([num_krylov_vecs, N])
     p = num_krylov_vecs - numeig
-    num_krylov_vecs = np.min([num_krylov_vecs, N])
-    if (p <= 1) and (num_krylov_vecs < N):
-      raise ValueError(f"`num_krylov_vecs` must be between `numeig` + 1 <"
-                       f" `num_krylov_vecs` <= N={N},"
-                       f" `num_krylov_vecs`={num_krylov_vecs}")
+    # if (p <= 1) and (num_krylov_vecs < N):
+    #   raise ValueError(f"`num_krylov_vecs` must be between `numeig` + 1 <"
+    #                    f" `num_krylov_vecs` <= N={N},"
+    #                    f" `num_krylov_vecs`={num_krylov_vecs}")
 
     dtype = initial_state.dtype
     # initialize arrays
@@ -470,22 +480,23 @@ def _implicitly_restarted_arnoldi(jax: types.ModuleType) -> Callable:
         dtype=dtype)
     H = jax.numpy.zeros((num_krylov_vecs + 1, num_krylov_vecs), dtype=dtype)
     # perform initial arnoldi factorization
-    Vm_tmp, Hm_tmp, numits, converged = arnoldi_fact(matvec, args,
-                                                     initial_state,
-                                                     krylov_vectors, H, 0,
-                                                     num_krylov_vecs, eps)
-    # obtain an m-step arnoldi factorization
-    Vm, Hm, fm = update_data(Vm_tmp, Hm_tmp, numits)
+    Vm_tmp, Hm_tmp, _, converged = arnoldi_fact(matvec, args, initial_state,
+                                                krylov_vectors, H, 0,
+                                                num_krylov_vecs, eps)
 
-    it = 0
+    Vm, Hm, fm = update_data(Vm_tmp, Hm_tmp, num_krylov_vecs)
+
+    it = 1 # we already did one arnoldi factorization
     if which == 'LR':
-      _which = 0
+      sort_fun = jax.tree_util.Partial(functools.partial(LR_sort, p))
     elif which == 'LM':
-      _which = 1
+      sort_fun = jax.tree_util.Partial(functools.partial(LM_sort, p))      
+
     else:
       raise ValueError(f"which = {which} not implemented")
+
     # make sure the dtypes are matching
-    if maxiter > 0:
+    if maxiter > 1:
       if Vm.dtype == np.float64:
         dtype = np.complex128
       elif Vm.dtype == np.float32:
@@ -500,26 +511,81 @@ def _implicitly_restarted_arnoldi(jax: types.ModuleType) -> Callable:
       Hm = Hm.astype(dtype)
       fm = fm.astype(dtype)
 
-    while (it < maxiter) and (not converged):
-      evals, _ = jax.numpy.linalg.eig(Hm)
-      krylov_vectors, H, fk, converged = shifted_QR(Vm, Hm, fm, evals, numeig,
-                                                    p, _which, res_thresh)
-      if converged:
-        break
-      v0 = jax.numpy.reshape(fk, initial_state.shape)
-      # restart
-      Vm_tmp, Hm_tmp, _, converged = arnoldi_fact(matvec, args, v0,
-                                                  krylov_vectors, H, numeig,
-                                                  num_krylov_vecs, eps)
-      Vm, Hm, fm = update_data(Vm_tmp, Hm_tmp, num_krylov_vecs)
-      it += 1
+    def body_fun(carry):
+      variables, static_vars = carry
+      _matvec, _Hm, _Vm, _fm, _initial_state, _it, _ = variables
+      _maxiter, _numeig, _num_krylov_vecs, _p, _res_thresh, _eps, _sort_fun = static_vars
+      evals, _ = jax.numpy.linalg.eig(_Hm)
+      krylov_vectors, H, fk, converged = shifted_QR(_Vm, _Hm, _fm, evals,
+                                                    _numeig, _p,
+                                                    _res_thresh, _sort_fun)
 
-    ev_, U_ = np.linalg.eig(np.array(Hm))
-    eigvals = jax.numpy.array(ev_)
-    U = jax.numpy.array(U_)
-    _, inds = LR_sort(eigvals, _which)
+      def false_fun(cond_args):
+        _, variables, static_vars = cond_args
+        __matvec, __args, __krylov_vectors, __H, __fk, __initial_state = variables
+        __numeig, __num_krylov_vecs, __eps, _ = static_vars
+
+        v0 = jax.numpy.reshape(__fk, __initial_state.shape)
+        # restart
+        Vm_tmp, Hm_tmp, _, converged = arnoldi_fact(__matvec, __args, v0,
+                                                    __krylov_vectors, __H,
+                                                    __numeig, __num_krylov_vecs,
+                                                    __eps)
+        Vm, Hm, fm = update_data(Vm_tmp, Hm_tmp, __num_krylov_vecs)
+        arnoldi_data = [Vm, Hm, fm]
+        out_vars = [
+            __matvec, __args, __krylov_vectors, __H, __fk, __initial_state
+        ]
+        out_stat_vars = [__numeig, __num_krylov_vecs, __eps, converged]
+        return arnoldi_data, out_vars, out_stat_vars
+
+      res = jax.lax.cond(
+        converged, lambda x: x, false_fun,
+        [[_Hm, _Vm, _fm], [_matvec, args, krylov_vectors, H, fk, initial_state],
+         [_numeig, _num_krylov_vecs, _eps, converged]])
+      arnoldi_data, variables, static_vars = res
+      _Vm, _Hm, _fm = arnoldi_data
+      _matvec, _args, _krylov_vectors, _H, _fk, _initial_state = variables
+      _numeig, _num_krylov_vecs, _eps, converged = static_vars
+      out_vars = [_matvec, _Hm, _Vm, _fm, _initial_state, _it + 1, converged]
+      out_stat_vars = [_maxiter, _numeig, _num_krylov_vecs, _p, _res_thresh, _eps, _sort_fun]
+      return out_vars, out_stat_vars
+
+    def cond_fun(carry):
+      variables, static_vars = carry
+      _it, converged = variables[5], variables[6]
+      _maxiter = static_vars[0]
+      return jax.lax.cond(_it < _maxiter, lambda x: x, lambda x: False,
+                          converged)
+
+
+    # while (it < maxiter) and (not converged):
+    #   evals, _ = jax.numpy.linalg.eig(Hm)
+    #   krylov_vectors, H, fk, converged = shifted_QR(Vm, Hm, fm, evals, numeig,
+    #                                                 p, _which, res_thresh)
+    #   # shifting can give back fk with L2-norm of fk =0, meaning eaxact convergence.
+    #   # TODO (martin): why is convergence not triggered in arnoldi_fact?
+    #   if converged:
+    #     break
+    #   v0 = jax.numpy.reshape(fk, initial_state.shape)
+    #   # restart
+    #   Vm_tmp, Hm_tmp, _, converged = arnoldi_fact(matvec, args, v0,
+    #                                               krylov_vectors, H, numeig,
+    #                                               num_krylov_vecs, eps)
+    #   Vm, Hm, fm = update_data(Vm_tmp, Hm_tmp, num_krylov_vecs)
+    #   it += 1 
+
+    variables = [matvec, Hm, Vm, fm, initial_state, it, converged]
+    static_vars = [maxiter, numeig, num_krylov_vecs, p, res_thresh, eps, sort_fun]
+    carry = (variables, static_vars)
+    res = jax.lax.while_loop(cond_fun, body_fun, carry)
+    out_vars = res[0]
+    Hm, Vm = out_vars[1], out_vars[2]
+    it, converged = out_vars[5], out_vars[6]
+    
+    eigvals, U = jax.numpy.linalg.eig(Hm)
+    inds = jax.numpy.argsort(jax.numpy.real(eigvals), kind='stable')[::-1]    
     vectors = get_vectors(Vm, U, inds, numeig)
-
     return eigvals[inds[0:numeig]], [
         jax.numpy.reshape(vectors[n, :], initial_state.shape)
         for n in range(numeig)
