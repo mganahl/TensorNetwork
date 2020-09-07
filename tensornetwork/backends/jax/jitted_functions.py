@@ -476,7 +476,6 @@ def _implicitly_restarted_arnoldi(jax: types.ModuleType) -> Callable:
                                                          krylov_vectors, H, 0,
                                                          num_krylov_vecs, eps)
     #Vm, Hm, fm = update_data(Vm_tmp, Hm_tmp, __num_krylov_vecs)
-    #obtain the residual
     fm = residual * norm
 
     it = 1 # we already did one arnoldi factorization
