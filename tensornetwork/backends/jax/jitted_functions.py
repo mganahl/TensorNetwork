@@ -383,24 +383,29 @@ def _implicitly_restarted_arnoldi(jax: types.ModuleType) -> Callable:
   # #######################################################
 
   @functools.partial(jax.jit, static_argnums=(4, 5, 6, 7))
-  def shifted_QR(Vm, Hm, fm, evals, numeig, p, res_thresh, sort_fun):
+  def shifted_QR(Vm, Hm, fm, numeig, p, res_thresh, sort_fun):
     ######################################################
     #######  NEW SORTING FUCTIONS INSERTED HERE  #########
     ######################################################
     ######################################################
     ######################################################
+    evals, _ = jax.numpy.linalg.eig(Hm)
     shifts, _ = sort_fun(evals)
-    # compress to numeig
-    q = jax.numpy.zeros(Hm.shape[0])
-    q = q.at[-1].set(1)
-    m = Hm.shape[0]
+    # compress arnoldi factorization
+    q = jax.numpy.zeros(Hm.shape[0], dtype=Hm.dtype)
+    q = q.at[-1].set(Hm.dtype.type(1))
 
-    for shift in shifts:
-      Qj, _ = jax.numpy.linalg.qr(Hm - shift * jax.numpy.eye(m))
+    def body(i, vals):
+      Vm, Hm, q, shifts = vals
+      Qj, _ = jax.numpy.linalg.qr(Hm - shifts[i] *
+                                  jax.numpy.eye(Hm.shape[0], dtype=Hm.dtype))
       Hm = Qj.T.conj() @ Hm @ Qj
       Vm = Qj.T @ Vm
       q = q @ Qj
+      return Vm, Hm, q, shifts
 
+    Vm, Hm, q, _ = jax.lax.fori_loop(0, shifts.shape[0], body,
+                                     (Vm, Hm, q, shifts))
     fk = Vm[numeig, :] * Hm[numeig, numeig - 1] + fm * q[numeig - 1]
     Z = jax.numpy.linalg.norm(fk)
     #if fk is a zero-vector then arnoldi has exactly converged.
@@ -487,12 +492,12 @@ def _implicitly_restarted_arnoldi(jax: types.ModuleType) -> Callable:
       sort_fun = jax.tree_util.Partial(functools.partial(LR_sort, p))
     elif which == 'LM':
       sort_fun = jax.tree_util.Partial(functools.partial(LM_sort, p))
-
     else:
       raise ValueError(f"which = {which} not implemented")
 
-    # make sure the dtypes are matching
+
     if maxiter > 1:
+      # cast arrays to correct complex dtype
       if Vm.dtype == np.float64:
         dtype = np.complex128
       elif Vm.dtype == np.float32:
@@ -503,53 +508,46 @@ def _implicitly_restarted_arnoldi(jax: types.ModuleType) -> Callable:
         dtype = Vm.dtype
       else:
         raise TypeError(f'dtype {Vm.dtype} not supported')
+
       Vm = Vm.astype(dtype)
       Hm = Hm.astype(dtype)
       fm = fm.astype(dtype)
 
     def body_fun(carry):
-      _matvec, _Hm, _Vm, _fm, _initial_state, _it, numits, _ = carry
-      #_maxiter, _numeig, _num_krylov_vecs, _p, _res_thresh, _sort_fun = static_vars
-      evals, _ = jax.numpy.linalg.eig(_Hm)
-      krylov_vectors, H, fk, _converged = shifted_QR(_Vm, _Hm, _fm, evals,
-                                                     numeig, p, res_thresh,
-                                                     sort_fun)
-
+      matvec, Hm, Vm, fm, initial_state, it, numits, _ = carry
+      krylov_vectors, H, fk, converged = shifted_QR(Vm, Hm, fm, numeig, p,
+                                                    res_thresh, sort_fun)
       def false_fun(cond_args):
         _, variables = cond_args
-        __matvec, __args, __krylov_vectors, __H, __fk, __initial_state, _, _ = variables
-        v0 = jax.numpy.reshape(__fk, __initial_state.shape)
+        matvec, args, krylov_vectors, H, fk, initial_state = variables[:6]
+        v0 = jax.numpy.reshape(fk, initial_state.shape)
         # restart
-        Vm, Hm, residual, norm, numits, __converged = arnoldi_fact(
-            __matvec, __args, v0, __krylov_vectors, __H, numeig,
-            num_krylov_vecs, eps)
+        Vm, Hm, residual, norm, numits, converged = arnoldi_fact(
+            matvec, args, v0, krylov_vectors, H, numeig, num_krylov_vecs, eps)
         fm = residual * norm
         arnoldi_data = [Vm, Hm, fm]
         out_vars = [
-            __matvec, __args, __krylov_vectors, __H, __fk, __initial_state,
-            numits, __converged
+            matvec, args, krylov_vectors, H, fk, initial_state, numits,
+            converged
         ]
         return [arnoldi_data, out_vars]
 
-      res = jax.lax.cond(_converged, lambda x: x, false_fun,
-                         [[_Vm, _Hm, _fm],
-                          [
-                              _matvec, args, krylov_vectors, H, fk,
-                              initial_state, numits, _converged
-                          ]])
+      res = jax.lax.cond(converged, lambda x: x, false_fun, [[
+          Vm, Hm, fm
+      ], [
+          matvec, args, krylov_vectors, H, fk, initial_state, numits, converged
+      ]])
       arnoldi_data, variables = res
-      _Vm, _Hm, _fm = arnoldi_data
-      _matvec, _args, _krylov_vectors, _H = variables[:4]
-      _fk, _initial_state, numits, _converged = variables[4:]
-      out_vars = [
-          _matvec, _Hm, _Vm, _fm, _initial_state, _it + 1, numits, _converged
-      ]
+      Vm, Hm, fm = arnoldi_data
+      matvec, _args, _krylov_vectors, _H = variables[:4]
+      _fk, initial_state, numits, converged = variables[4:]
+      out_vars = [matvec, Hm, Vm, fm, initial_state, it + 1, numits, converged]
       return out_vars
 
     def cond_fun(carry):
-      _it, _converged = carry[5], carry[7]
-      return jax.lax.cond(_it < maxiter, lambda x: x, lambda x: False,
-                          jax.numpy.logical_not(_converged))
+      it, converged = carry[5], carry[7]
+      return jax.lax.cond(it < maxiter, lambda x: x, lambda x: False,
+                          jax.numpy.logical_not(converged))
 
     carry = [matvec, Hm, Vm, fm, initial_state, it, numits, converged]
     res = jax.lax.while_loop(cond_fun, body_fun, carry)
@@ -562,6 +560,10 @@ def _implicitly_restarted_arnoldi(jax: types.ModuleType) -> Callable:
     Hm = Hm.at[numits, numits - 1].set(
         jax.lax.cond(converged, lambda x: H.dtype.type(0.0), lambda x: x,
                      H[numits, numits - 1]))
+    # if the Arnoldi-factorization stopped early (after `numit` iterations,
+    # before exhausting the allowed size of the Krylov subspace,
+    # i.e. `numit` < 'num_krylov_vecs'), set elements
+    # at positions m, n with m,n >= `numit` to 0.0.
     Hm = set_to_zero(Hm, numits, num_krylov_vecs)
     #TODO: fix the dtypes of returned values to match
     eigvals, U = jax.numpy.linalg.eig(Hm)
