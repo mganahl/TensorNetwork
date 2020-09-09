@@ -382,8 +382,8 @@ def _implicitly_restarted_arnoldi(jax: types.ModuleType) -> Callable:
   # #######################################################
   # #######################################################
 
-  @functools.partial(jax.jit, static_argnums=(4, 5, 6, 7))
-  def shifted_QR(Vm, Hm, fm, numeig, p, res_thresh, sort_fun):
+  @functools.partial(jax.jit, static_argnums=(3, 4, 5))
+  def shifted_QR(Vm, Hm, fm, numeig, res_thresh, sort_fun):
     ######################################################
     #######  NEW SORTING FUCTIONS INSERTED HERE  #########
     ######################################################
@@ -458,6 +458,7 @@ def _implicitly_restarted_arnoldi(jax: types.ModuleType) -> Callable:
         `matvec(x, *args)` with `x` the input array on which
         `matvec` should act.
       initial_state: An starting vector for the iteration.
+      dim: The matrix dimension of the linear operator `matvec`.
       num_krylov_vecs: Number of krylov vectors of the arnoldi factorization.
         numeig: The number of desired eigenvector-eigenvalue pairs.
       which: Which eigenvalues to target. Currently supported: `which = 'LR'`
@@ -468,30 +469,30 @@ def _implicitly_restarted_arnoldi(jax: types.ModuleType) -> Callable:
     Returns:
       eta, U: Two lists containing eigenvalues and eigenvectors.
     """
-    #N = np.prod(initial_state.shape)
-    #num_krylov_vecs = min([num_krylov_vecs, N])
-    p = num_krylov_vecs - numeig
-    # if (p <= 1) and (num_krylov_vecs < N):
-    #   raise ValueError(f"`num_krylov_vecs` must be between `numeig` + 1 <"
-    #                    f" `num_krylov_vecs` <= N={N},"
-    #                    f" `num_krylov_vecs`={num_krylov_vecs}")
-
+    #num_krylov_vecs = min(num_krylov_vecs, dim)
+    num_expand = num_krylov_vecs - numeig
+    # if (num_expand <= 1) and (num_krylov_vecs < dim):
+    #   raise ValueError(f"num_krylov_vecs must be between numeig + 1 <"
+    #                    f" num_krylov_vecs <= dim = {dim},"
+    #                    f" num_krylov_vecs = {num_krylov_vecs}")
     dtype = initial_state.dtype
     # initialize arrays
     krylov_vectors = jax.numpy.zeros(
         (num_krylov_vecs, jax.numpy.ravel(initial_state).shape[0]), dtype=dtype)
     H = jax.numpy.zeros((num_krylov_vecs, num_krylov_vecs), dtype=dtype)
     # perform initial arnoldi factorization
-    Vm, Hm, residual, norm, numits, converged = arnoldi_fact(
+    Vm, Hm, residual, norm, numits, ar_converged = arnoldi_fact(
         matvec, args, initial_state, krylov_vectors, H, 0, num_krylov_vecs, eps)
     #Vm, Hm, fm = update_data(Vm_tmp, Hm_tmp, __num_krylov_vecs)
     fm = residual * norm
 
     it = 1  # we already did one arnoldi factorization
+    #sort_fun returns `num_expand` least relevant eigenvalues
+    #(those to be projected out)
     if which == 'LR':
-      sort_fun = jax.tree_util.Partial(functools.partial(LR_sort, p))
+      sort_fun = jax.tree_util.Partial(functools.partial(LR_sort, num_expand))
     elif which == 'LM':
-      sort_fun = jax.tree_util.Partial(functools.partial(LM_sort, p))
+      sort_fun = jax.tree_util.Partial(functools.partial(LM_sort, num_expand))
     else:
       raise ValueError(f"which = {which} not implemented")
 
@@ -514,45 +515,46 @@ def _implicitly_restarted_arnoldi(jax: types.ModuleType) -> Callable:
       fm = fm.astype(dtype)
 
     def body_fun(carry):
-      matvec, Hm, Vm, fm, initial_state, it, numits, _ = carry
-      krylov_vectors, H, fk, converged = shifted_QR(Vm, Hm, fm, numeig, p,
+      matvec, Hm, Vm, fm, initial_state, it, numits, ar_converged, _, _ = carry
+      krylov_vectors, H, fk, converged = shifted_QR(Vm, Hm, fm, numeig,
                                                     res_thresh, sort_fun)
       def false_fun(cond_args):
         _, variables = cond_args
         matvec, args, krylov_vectors, H, fk, initial_state = variables[:6]
+        converged = variables[7]
         v0 = jax.numpy.reshape(fk, initial_state.shape)
         # restart
-        Vm, Hm, residual, norm, numits, converged = arnoldi_fact(
+        Vm, Hm, residual, norm, numits, ar_converged = arnoldi_fact(
             matvec, args, v0, krylov_vectors, H, numeig, num_krylov_vecs, eps)
         fm = residual * norm
         arnoldi_data = [Vm, Hm, fm]
         out_vars = [
-            matvec, args, krylov_vectors, H, fk, initial_state, numits,
-            converged
+            matvec, args, krylov_vectors, H, fk, initial_state, numits, ar_converged,
+            converged, norm
         ]
         return [arnoldi_data, out_vars]
 
       res = jax.lax.cond(converged, lambda x: x, false_fun, [[
           Vm, Hm, fm
       ], [
-          matvec, args, krylov_vectors, H, fk, initial_state, numits, converged
+          matvec, args, krylov_vectors, H, fk, initial_state, numits, ar_converged, converged, 10.0
       ]])
       arnoldi_data, variables = res
       Vm, Hm, fm = arnoldi_data
       matvec, _args, _krylov_vectors, _H = variables[:4]
-      _fk, initial_state, numits, converged = variables[4:]
-      out_vars = [matvec, Hm, Vm, fm, initial_state, it + 1, numits, converged]
+      _fk, initial_state, numits, ar_converged, converged, norm = variables[4:]
+      out_vars = [matvec, Hm, Vm, fm, initial_state, it + 1, numits, ar_converged, converged, norm]
       return out_vars
 
     def cond_fun(carry):
-      it, converged = carry[5], carry[7]
+      it, converged = carry[5], carry[8] #check converged
       return jax.lax.cond(it < maxiter, lambda x: x, lambda x: False,
                           jax.numpy.logical_not(converged))
 
-    carry = [matvec, Hm, Vm, fm, initial_state, it, numits, converged]
+    carry = [matvec, Hm, Vm, fm, initial_state, it, numits, ar_converged, False, norm]
     res = jax.lax.while_loop(cond_fun, body_fun, carry)
     Hm, Vm = res[1], res[2]
-    it, numits, converged = res[5], res[6], res[7]
+    it, numits, ar_converged, converged = res[5], res[6], res[7], res[8]
 
     #if `converged` then `norm`is below convergence threshold
     #set it to 0.0 in this case to prevent `jnp.linalg.eig` from finding a
@@ -573,7 +575,7 @@ def _implicitly_restarted_arnoldi(jax: types.ModuleType) -> Callable:
     return eigvals[inds], [
         jax.numpy.reshape(vectors[n, :], initial_state.shape)
         for n in range(numeig)
-    ], converged, it, numits, Hm, numeig
+    ], ar_converged, converged, it, numits, Hm, numeig, norm
 
   return implicitly_restarted_arnoldi_method
 
