@@ -645,7 +645,7 @@ def _implicitly_restarted_arnoldi(jax: types.ModuleType) -> Callable:
       #indicating that iram converges.
       #||fk|| = \beta_m in reference above
       Vk, Hk, fk = shifted_QR(Vm, Hm, fm, numeig, sort_fun)
-      Hk = set_to_zero(Hk, numeig, num_krylov_vecs)
+      Hk = Hk.at[numeig:, :].set(0.0)
       beta_k = jax.numpy.linalg.norm(fk)
       beta_ks=beta_ks.at[it].set(beta_k)
       converged = check_eigvals_convergence_iram(beta_k, Hk, eps, numeig)
@@ -708,7 +708,7 @@ def _implicitly_restarted_arnoldi(jax: types.ModuleType) -> Callable:
     return eigvals[inds], [
         jax.numpy.reshape(vectors[n, :], initial_state.shape)
         for n in range(numeig)
-    ], ar_converged, converged, it, numits, Hm, numeig, norm, beta_ks
+    ]#, ar_converged, converged, it, numits, Hm, numeig, norm, beta_ks
 
   return implicitly_restarted_arnoldi_method
 
