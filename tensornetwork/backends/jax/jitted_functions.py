@@ -225,6 +225,10 @@ def _generate_arnoldi_factorization(jax: types.ModuleType) -> Callable:
     vector = vector - h * jax.numpy.reshape(v, vector.shape)
     return [vector, krylov_vectors, n, H]
 
+
+
+
+  
   @functools.partial(jax.jit, static_argnums=(5, 6, 7))
   def _arnoldi_fact(matvec, args, v0, krylov_vectors, H, start, num_krylov_vecs,
                     eps):
