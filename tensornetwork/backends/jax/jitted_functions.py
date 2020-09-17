@@ -273,7 +273,7 @@ def _generate_arnoldi_factorization(jax: types.ModuleType) -> Callable:
       return [vector, krylov_vectors, n, H]
 
 
-    def iterative_classical_gram_schmidt(vector, krylov_vectors, iterations=2):
+    def iterative_classical_gram_schmidt(vector, krylov_vectors, iterations=5):
       """
       orthogonalize `vector`  to all rows of `krylov_vectors`.
       Args:
@@ -310,7 +310,7 @@ def _generate_arnoldi_factorization(jax: types.ModuleType) -> Callable:
       initial_vals = [Av.ravel(), krylov_vectors, i, H]
       Av, krylov_vectors, _, H = jax.lax.fori_loop(
           0, i + 1, modified_gram_schmidt_step_arnoldi, initial_vals)
-
+      
       # Av, overlaps = iterative_classical_gram_schmidt(
       #     Av.ravel(), (i > jax.numpy.arange(krylov_vectors.shape[0]))[:, None] *
       #     krylov_vectors)
