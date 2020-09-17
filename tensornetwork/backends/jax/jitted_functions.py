@@ -544,79 +544,73 @@ def _implicitly_restarted_arnoldi(jax: types.ModuleType) -> Callable:
       Vm = Vm.astype(dtype)
       Hm = Hm.astype(dtype)
       fm = fm.astype(dtype)
+      
     beta_ks = jax.numpy.zeros(num_krylov_vecs)
+    shape = initial_state.shape
     
     def outer_loop(carry):
-      matvec, Hm, Vm, fm, initial_state, it, numits, ar_converged, _, _, beta_ks = carry
+      Hm, Vm, fm, it, numits, ar_converged, _, _, beta_ks = carry
       #perform shifted QR iterations to compress arnoldi factorization
       #Note that ||fk|| typically decreases as one iterates the outer loop
       #indicating that iram converges.
       #||fk|| = \beta_m in reference above
       Vk, Hk, fk = shifted_QR(Vm, Hm, fm, numeig, sort_fun)
+      Vk = Vk.at[numeig:, :].set(0.0)      
       Hk = Hk.at[numeig:, :].set(0.0)
+      Hk = Hk.at[:, numeig:].set(0.0)      
       beta_k = jax.numpy.linalg.norm(fk)
-      beta_ks=beta_ks.at[it].set(beta_k)
-      converged = check_eigvals_convergence_iram(beta_k, Hk, eps, numeig)
-
-      
-      def do_arnoldi(cond_args):
-        _, variables = cond_args
-        matvec, args, Vk, Hk, fk, initial_state = variables[:6]
-        converged = variables[7]
-        v0 = jax.numpy.reshape(fk, initial_state.shape)
+      beta_ks = beta_ks.at[it].set(beta_k)
+      converged = beta_k < eps#check_eigvals_convergence_iram(beta_k, Hk, eps, numeig)
+      def do_arnoldi(vals):
+        Vk, Hk, fk = vals
         # restart
         Vm, Hm, residual, norm, numits, ar_converged = arnoldi_fact(
-            matvec, args, v0, Vk, Hk, numeig, num_krylov_vecs, eps)
+          matvec, args, jax.numpy.reshape(fk, shape),
+          Vk, Hk, numeig, num_krylov_vecs, eps)
         fm = residual * norm
-        arnoldi_data = [Vm, Hm, fm]
-        out_vars = [
-            matvec, args, Vk, Hk, fk, initial_state, numits, ar_converged,
-            converged, norm
-        ]
-        return [arnoldi_data, out_vars]
+        return Vm, Hm, fm, norm, numits, ar_converged
 
-      res = jax.lax.cond(converged, lambda x: x, do_arnoldi, [[
-          Vm, Hm, fm
-      ], [
-          matvec, args, Vk, Hk, fk, initial_state, numits, ar_converged, converged, 10.0
-      ]])
-      arnoldi_data, variables = res
-      Vm, Hm, fm = arnoldi_data
-      matvec, _args, _Vk, _Hk = variables[:4]
-      _fk, initial_state, numits, ar_converged, converged, norm = variables[4:]
-      out_vars = [matvec, Hm, Vm, fm, initial_state, it + 1, numits, ar_converged, converged, norm, beta_ks]
+      res = jax.lax.cond(converged,
+                         lambda x: (Vk, Hk, fk, jax.numpy.linalg.norm(fk), numeig, False),
+                         lambda x: do_arnoldi((Vk, Hk, fk)),
+                         None)
+
+      Vm, Hm, fm, norm, numits, ar_converged = res
+      out_vars = [Hm, Vm, fm, it + 1, numits, ar_converged, converged, norm, beta_ks]
       return out_vars
 
     def cond_fun(carry):
-      it, converged = carry[5], carry[8] #check converged
+      it, ar_converged, converged = carry[3], carry[5], carry[6] #check converged
       return jax.lax.cond(it < maxiter, lambda x: x, lambda x: False,
-                          jax.numpy.logical_not(converged))
+                          jax.numpy.logical_not(
+                            jax.numpy.logical_or(converged, ar_converged)))
 
-    carry = [matvec, Hm, Vm, fm, initial_state, it, numits, ar_converged, False, norm, beta_ks]
+    carry = [Hm, Vm, fm, it, numits, ar_converged, False, norm, beta_ks]
     res = jax.lax.while_loop(cond_fun, outer_loop, carry)
-    Hm, Vm = res[1], res[2]
-    it, numits, ar_converged, converged = res[5], res[6], res[7], res[8]
-    beta_ks = res[-1]
+    Hm, Vm = res[0], res[1]
+    it, numits, ar_converged, converged = res[3], res[4], res[5], res[6]
+    beta_ks = res[8]
+    return Hm, Vm, it, numits, ar_converged, converged, beta_ks
     #if `converged` then `norm`is below convergence threshold
     #set it to 0.0 in this case to prevent `jnp.linalg.eig` from finding a
     #spurious eigenvalue of order `norm`.
-    Hm = Hm.at[numits, numits - 1].set(
-        jax.lax.cond(converged, lambda x: Hm.dtype.type(0.0), lambda x: x,
-                     Hm[numits, numits - 1]))
-    # if the Arnoldi-factorization stopped early (after `numit` iterations,
-    # before exhausting the allowed size of the Krylov subspace,
-    # i.e. `numit` < 'num_krylov_vecs'), set elements
-    # at positions m, n with m,n >= `numit` to 0.0.
-    Hm = set_to_zero(Hm, numits, num_krylov_vecs)
-    #TODO: fix the dtypes of returned values to match
-    eigvals, U = jax.numpy.linalg.eig(Hm)
-    inds = jax.numpy.argsort(
-        jax.numpy.real(eigvals[0:numeig]), kind='stable')[::-1]
-    vectors = get_vectors(Vm, U, inds, numeig)
-    return eigvals[inds], [
-        jax.numpy.reshape(vectors[n, :], initial_state.shape)
-        for n in range(numeig)
-    ]#, ar_converged, converged, it, numits, Hm, numeig, norm, beta_ks
+    # Hm = Hm.at[numits, numits - 1].set(
+    #     jax.lax.cond(converged, lambda x: Hm.dtype.type(0.0), lambda x: x,
+    #                  Hm[numits, numits - 1]))
+    # # if the Arnoldi-factorization stopped early (after `numit` iterations,
+    # # before exhausting the allowed size of the Krylov subspace,
+    # # i.e. `numit` < 'num_krylov_vecs'), set elements
+    # # at positions m, n with m,n >= `numit` to 0.0.
+    # Hm = set_to_zero(Hm, numits, num_krylov_vecs)
+    # #TODO: fix the dtypes of returned values to match
+    # eigvals, U = jax.numpy.linalg.eig(Hm)
+    # inds = jax.numpy.argsort(
+    #     jax.numpy.real(eigvals[0:numeig]), kind='stable')[::-1]
+    # vectors = get_vectors(Vm, U, inds, numeig)
+    # return eigvals[inds], [
+    #     jax.numpy.reshape(vectors[n, :], initial_state.shape)
+    #     for n in range(numeig)
+    # ]#, ar_converged, converged, it, numits, Hm, numeig, norm, beta_ks
 
   return implicitly_restarted_arnoldi_method
 
