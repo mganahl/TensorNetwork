@@ -1543,15 +1543,15 @@ def test_sign():
   tensor = get_tensor(R=4, num_charges=1, dtype=np.float64)
   backend = symmetric_backend.SymmetricBackend()
   res = backend.sign(tensor)
-  np.testing.assert_allclose(res.data, np.sign(tensor.data))  
+  np.testing.assert_allclose(res.data, np.sign(tensor.data))
 
 def test_abs():
   tensor = get_tensor(R=4, num_charges=1, dtype=np.float64)
   backend = symmetric_backend.SymmetricBackend()
   res = backend.abs(tensor)
-  np.testing.assert_allclose(res.data, np.abs(tensor.data))  
+  np.testing.assert_allclose(res.data, np.abs(tensor.data))
 
-  
+
 @pytest.mark.parametrize('dtype', [np.float64, np.complex128])
 @pytest.mark.parametrize('x0', [True, False])
 @pytest.mark.parametrize('ncv', [None, 40])
