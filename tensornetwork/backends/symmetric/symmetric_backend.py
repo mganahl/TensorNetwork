@@ -135,11 +135,17 @@ class SymmetricBackend(abstract_backend.AbstractBackend):
     dtype = dtype if dtype is not None else numpy.float64
     return self.bs.ones(shape, dtype=dtype)
 
+  def ones_like(self, other: Tensor) -> Tensor:
+    return self.ones(other.sparse_shape, other.dtype)
+
   def zeros(self,
             shape: Sequence[Index],
             dtype: Optional[numpy.dtype] = None) -> Tensor:
     dtype = dtype if dtype is not None else numpy.float64
     return self.bs.zeros(shape, dtype=dtype)
+
+  def zeros_like(self, other: Tensor) -> Tensor:
+    return self.zeros(other.sparse_shape, other.dtype)
 
   def randn(self,
             shape: Sequence[Index],
@@ -149,6 +155,9 @@ class SymmetricBackend(abstract_backend.AbstractBackend):
     if seed:
       numpy.random.seed(seed)
     return self.bs.randn(shape, dtype)
+
+  def randn_like(self, other: Tensor, seed: Optional[int] = None) -> Tensor:
+    return self.randn(other.sparse_shape, other.dtype, seed)
 
   def random_uniform(self,
                      shape: Sequence[Index],
@@ -160,6 +169,15 @@ class SymmetricBackend(abstract_backend.AbstractBackend):
       numpy.random.seed(seed)
     dtype = dtype if dtype is not None else numpy.float64
     return self.bs.random(shape, boundaries, dtype)
+
+  def random_uniform_like(self,
+                          other: Tensor,
+                          boundaries: Optional[Tuple[float,
+                                                     float]] = (0.0, 1.0),
+                          seed: Optional[int] = None) -> Tensor:
+    dtype = other.dtype
+    shape = other.sparse_shape
+    return self.random_uniform(shape, boundaries, dtype, seed)
 
   def conj(self, tensor: Tensor) -> Tensor:
     return self.bs.conj(tensor)
@@ -239,7 +257,7 @@ class SymmetricBackend(abstract_backend.AbstractBackend):
     if not isinstance(initial_state, BlockSparseTensor):
       raise TypeError("Expected a `BlockSparseTensor`. Got {}".format(
           type(initial_state)))
-    
+
     initial_state.contiguous(inplace=True)
     dim = len(initial_state.data)
     def matvec(vector):
@@ -607,7 +625,7 @@ class SymmetricBackend(abstract_backend.AbstractBackend):
       self.bs.set_caching_status(former_caching_status)
       if enable_caching and cache_was_empty:
         self.bs.clear_cache()
-    
+
     if info < 0:
       raise ValueError("ARPACK gmres received illegal input or broke down.")
     if info > 0:
@@ -685,7 +703,7 @@ class SymmetricBackend(abstract_backend.AbstractBackend):
   def item(self, tensor):
     return tensor.item()
 
-  
+
   def matmul(self, tensor1: Tensor, tensor2: Tensor):
     if (tensor1.ndim != 2) or (tensor2.ndim != 2):
       raise ValueError("inputs to `matmul` have to be matrices")

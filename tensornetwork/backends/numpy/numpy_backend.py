@@ -212,7 +212,7 @@ class NumPyBackend(abstract_backend.AbstractBackend):
     """
     raise NotImplementedError("Backend '{}' has not implemented eigs.".format(
         self.name))
-  
+
   def eigs(self,
            A: Callable,
            args: Optional[List] = None,
@@ -759,7 +759,7 @@ class NumPyBackend(abstract_backend.AbstractBackend):
     m.write(s.encode('latin-1'))
     m.seek(0)
     return np.load(m)
-  
+
   def power(self, a: Tensor, b: Union[Tensor, float]) -> Tensor:
     """
     Returns the exponentiation of tensor a raised to b.  
@@ -780,6 +780,6 @@ class NumPyBackend(abstract_backend.AbstractBackend):
         is that produced by the broadcast of a and b.
     """
     return np.power(a, b)
-  
+
   def item(self, tensor):
     return tensor.item()

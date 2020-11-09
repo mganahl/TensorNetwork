@@ -9,7 +9,9 @@ from tensornetwork.network_operations import (
 
 from tensornetwork.tensor import Tensor, NconBuilder
 from tensornetwork.linalg.initialization import (eye, ones, randn,
-                                                 random_uniform, zeros)
+                                                 random_uniform, zeros,
+                                                 ones_like, zeros_like, randn_like,
+                                                 random_uniform_like)
 
 from tensornetwork.linalg.linalg import norm, qr, svd, rq, eigh, expm, inv
 

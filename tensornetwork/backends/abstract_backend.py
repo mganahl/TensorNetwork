@@ -306,6 +306,55 @@ class AbstractBackend:
     raise NotImplementedError(("Backend '{}' has not implemented "
                                "random_uniform.").format(self.name))
 
+
+  def ones_like(self, other: Tensor) -> Tensor:
+    """Return a new tensor of shape and dtype
+       identical to `other`, initialized with ones.
+       Args:
+         other: Tensor
+    """
+    return self.ones(other.shape, other.dtype)
+
+  def zeros_like(self, other: Tensor) -> Tensor:
+    """Return a new tensor of shape and dtype
+       identical to `other`, initialized with zeros.
+       Args:
+         other: Tensor
+    """
+    return self.zeros(other.shape, other.dtype)
+
+
+  def randn_like(self,
+                 other: Tensor,
+                 seed: Optional[int] = None) -> Tensor:
+    """Return a new tensor of shape and dtype
+       identical to `other`, initialized with random-normal numbers.
+       Args:
+         other: Tensor
+         seed:  The seed for the random number generator
+    """
+    dtype = other.dtype
+    shape = other.shape
+    return self.randn(shape, dtype, seed)
+
+
+  def random_uniform_like(self,
+                          other: Tensor,
+                          boundaries: Optional[Tuple[float,
+                                                     float]] = (0.0, 1.0),
+                          seed: Optional[int] = None) -> Tensor:
+    """Return a new tensor of shape and dtype
+       identical to `other`, initialized with random-unifrom numbers.
+       Args:
+         other: Tensor
+          boundaries (tuple): The boundaries of the uniform distribution.
+          seed:  The seed for the random number generator
+    """
+    dtype = other.dtype
+    shape = other.shape
+    return self.random_uniform(shape, boundaries, dtype, seed)
+
+
   def conj(self, tensor: Tensor) -> Tensor:
     """
     Return the complex conjugate of `tensor`
