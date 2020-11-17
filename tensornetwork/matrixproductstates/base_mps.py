@@ -101,13 +101,13 @@ class BaseMPS:
       return self.backend.svd(tensor=tensor, pivot_axis=2,
                               max_singular_values=max_singular_values)
     self.svd = svd
-    @partial(timer.timer, name = 'right_qr')
+    @partial(timer.timer, name = 'right-qr')
     @partial(jit, backend=self.backend)
     def qr(tensor):
       return self.backend.qr(tensor, 2)
     self.qr = qr
 
-    @partial(timer.timer, name = 'left_qr')
+    @partial(timer.timer, name = 'left-qr')
     @partial(jit, backend=self.backend)
     def rq(tensor):
       return self.backend.rq(tensor, 1)
