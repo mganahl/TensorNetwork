@@ -91,26 +91,26 @@ class BaseDMRG:
 
   def single_site_matvec(self, mpstensor, L, mpotensor, R):
     return ncon([L, mpstensor, mpotensor, R],
-                [[3, 1, -1], [1, 2, 4], [3, 5, -2, 2], [5, 4, -3]],
+                [[3, 1, -2], [2, 1, 4], [3, 5, -1, 2], [5, 4, -3]],
                 backend=self.backend.name)
 
   def two_site_matvec(self, mps_bond_tensor, L, left_mpotensor,
                       right_mpotensor, R):
     return ncon([L, mps_bond_tensor, left_mpotensor, right_mpotensor, R],
-                [[3, 1, -1], [1, 2, 5, 6], [3, 4, -2, 2], [4, 7, -3, 5],
+                [[3, 1, -3], [2, 5, 1, 6], [3, 4, -1, 2], [4, 7, -2, 5],
                  [7, 6, -4]],
                 backend=self.backend.name)
 
   def add_left_layer(self, L, mps_tensor, mpo_tensor):
     return ncon([L, mps_tensor, mpo_tensor,
                  self.backend.conj(mps_tensor)],
-                [[2, 1, 5], [1, 3, -2], [2, -1, 4, 3], [5, 4, -3]],
+                [[2, 1, 5], [3, 1, -2], [2, -1, 4, 3], [4, 5, -3]],
                 backend=self.backend.name)
 
   def add_right_layer(self, R, mps_tensor, mpo_tensor):
     return ncon([R, mps_tensor, mpo_tensor,
                  self.backend.conj(mps_tensor)],
-                [[2, 1, 5], [-2, 3, 1], [-1, 2, 4, 3], [-3, 4, 5]],
+                [[2, 1, 5], [3, -2, 1], [-1, 2, 4, 3], [4, -3, 5]],
                 backend=self.backend.name)
 
   def position(self, site: int):
@@ -160,7 +160,7 @@ class BaseDMRG:
 
   def compute_left_envs(self) -> None:
     """
-    Compute all left environment blocks of sites up to 
+    Compute all left environment blocks of sites up to
     (including) self.mps.center_position.
     """
     lb = self.left_envs[0]
@@ -234,7 +234,7 @@ class BaseDMRG:
       if site < len(self.mps.tensors) - 1:
         self.mps.center_position += 1
         self.mps.tensors[site + 1] = ncon([R, self.mps.tensors[site + 1]],
-                                          [[-1, 1], [1, -2, -3]],
+                                          [[-2, 1], [-1, 1, -3]],
                                           backend=self.backend.name)
         self.left_envs[site + 1] = self.add_left_layer(self.left_envs[site], Q,
                                                        self.mpo.tensors[site])
@@ -282,7 +282,7 @@ class BaseDMRG:
     #note: some backends will jit functions
     if sweep_dir in ('r', 'right'):
       bond_mps = ncon([self.mps.tensors[site], self.mps.tensors[site + 1]],
-                      [[-1, -2, 1], [1, -3, -4]],
+                      [[-1, -3, 1], [-2, 1, -4]],
                       backend=self.backend.name)
       energies, states = self.backend.eigsh_lanczos(
           A=self.two_site_matvec,
@@ -307,14 +307,14 @@ class BaseDMRG:
       self.mps.tensors[site] = u
       if site < len(self.mps.tensors) - 1:
         self.mps.center_position += 1
-        self.mps.tensors[site + 1] = ncon([s, vh], [[-1, 1], [1, -2, -3]],
+        self.mps.tensors[site + 1] = ncon([s, vh], [[-2, 1], [-1, 1, -3]],
                                           backend=self.backend.name)
         self.left_envs[site + 1] = self.add_left_layer(self.left_envs[site], u,
                                                        self.mpo.tensors[site])
 
     elif sweep_dir in ('l', 'left'):
       bond_mps = ncon([self.mps.tensors[site - 1], self.mps.tensors[site]],
-                      [[-1, -2, 1], [1, -3, -4]],
+                      [[-1, -3, 1], [-2, 1, -4]],
                       backend=self.backend.name)
       energies, states = self.backend.eigsh_lanczos(
           A=self.two_site_matvec,
@@ -719,8 +719,8 @@ class FiniteDMRG(BaseDMRG):
       mpo: A FiniteMPO object.
       name: An optional name for the simulation.
     """
-    lshape = (mpo.tensors[0].shape[0], mps.tensors[0].shape[0],
-              mps.tensors[0].shape[0])
+    lshape = (mpo.tensors[0].shape[0], mps.tensors[0].shape[1],
+              mps.tensors[0].shape[1])
     rshape = (mpo.tensors[-1].shape[1], mps.tensors[-1].shape[2],
               mps.tensors[-1].shape[2])
     lb = mps.backend.ones(lshape, dtype=mps.dtype)

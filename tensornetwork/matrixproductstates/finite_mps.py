@@ -111,7 +111,7 @@ class FiniteMPS(BaseMPS):
           len(d) - 1))
     D = [1] + D + [1]
     tensors = [
-        be.randn((D[n], d[n], D[n + 1]), dtype=dtype) for n in range(len(d))
+        be.randn((d[n], D[n], D[n + 1]), dtype=dtype) for n in range(len(d))
     ]
     return cls(
         tensors=tensors,
@@ -199,7 +199,7 @@ class FiniteMPS(BaseMPS):
     left_envs = {}
     for site in left_sites:
       left_envs[site] = Node(
-          self.backend.eye(N=self.tensors[site].shape[0], dtype=self.dtype),
+          self.backend.eye(N=self.tensors[site].shape[1], dtype=self.dtype),
           backend=self.backend)
 
     # left reduced density matrices at sites > center_position
@@ -215,9 +215,9 @@ class FiniteMPS(BaseMPS):
       nodes[center_position][1] ^ conj_nodes[center_position][1]
 
       for site in range(center_position + 1, n2):
-        nodes[site][0] ^ nodes[site - 1][2]
-        conj_nodes[site][0] ^ conj_nodes[site - 1][2]
-        nodes[site][1] ^ conj_nodes[site][1]
+        nodes[site][1] ^ nodes[site - 1][2]
+        conj_nodes[site][1] ^ conj_nodes[site - 1][2]
+        nodes[site][0] ^ conj_nodes[site][0]
 
       edges = {site: node[2] for site, node in nodes.items()}
       conj_edges = {site: node[2] for site, node in conj_nodes.items()}
@@ -283,15 +283,15 @@ class FiniteMPS(BaseMPS):
         conj_nodes[site] = conj(nodes[site])
 
       nodes[center_position][2] ^ conj_nodes[center_position][2]
-      nodes[center_position][1] ^ conj_nodes[center_position][1]
+      nodes[center_position][0] ^ conj_nodes[center_position][0]
 
       for site in reversed(range(n1 + 1, center_position)):
-        nodes[site][2] ^ nodes[site + 1][0]
-        conj_nodes[site][2] ^ conj_nodes[site + 1][0]
-        nodes[site][1] ^ conj_nodes[site][1]
+        nodes[site][2] ^ nodes[site + 1][1]
+        conj_nodes[site][2] ^ conj_nodes[site + 1][1]
+        nodes[site][0] ^ conj_nodes[site][0]
 
-      edges = {site: node[0] for site, node in nodes.items()}
-      conj_edges = {site: node[0] for site, node in conj_nodes.items()}
+      edges = {site: node[1] for site, node in nodes.items()}
+      conj_edges = {site: node[1] for site, node in conj_nodes.items()}
 
       right_env = contract_between(nodes[center_position],
                                    conj_nodes[center_position])

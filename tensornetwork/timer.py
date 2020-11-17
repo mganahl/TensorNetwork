@@ -8,9 +8,10 @@ def block_until_ready(args):
     args.block_until_ready()
 
   else:
-    if len(args) > 0:
-      if hasattr(args[0], "block_until_ready"):
-        args[0].block_until_ready()
+    if hasattr(args, '__len__'):
+      if len(args) > 0:
+        if hasattr(args[0], "block_until_ready"):
+          args[0].block_until_ready()
 
 
 def timer(fun, name, *args, **kwargs):

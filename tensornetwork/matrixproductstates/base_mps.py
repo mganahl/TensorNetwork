@@ -98,8 +98,11 @@ class BaseMPS:
     ########################################################################
     @partial(jit, backend=self.backend, static_argnums=(1,))
     def svd(tensor, max_singular_values=None):
-      return self.backend.svd(tensor=tensor, pivot_axis=2,
-                              max_singular_values=max_singular_values)
+      tensor = self.backend.transpose(tensor, (0, 2, 1, 3))
+      U, S, V, r = self.backend.svd(
+          tensor=tensor, pivot_axis=2, max_singular_values=max_singular_values)
+      return U, S, self.backend.transpose(V, (1, 0, 2)), r
+    
     self.svd = svd
     @partial(timer.timer, name = 'right-qr')
     @partial(jit, backend=self.backend)
@@ -107,10 +110,13 @@ class BaseMPS:
       return self.backend.qr(tensor, 2)
     self.qr = qr
 
-    @partial(timer.timer, name = 'left-qr')
+    @partial(timer.timer, name='left-qr')
     @partial(jit, backend=self.backend)
     def rq(tensor):
-      return self.backend.rq(tensor, 1)
+      tensor = self.backend.transpose(tensor, (1, 0, 2))
+      R, Q = self.backend.rq(tensor, 1)
+      return R, self.backend.transpose(Q, (1, 0, 2))
+
     self.rq = rq
 
     self.norm = self.backend.jit(self.backend.norm)
@@ -119,11 +125,11 @@ class BaseMPS:
     ########################################################################
 
   def left_transfer_operator(self, A, l, Abar):
-    return ncon([A, l, Abar], [[1, 2, -1], [1, 3], [3, 2, -2]],
+    return ncon([A, l, Abar], [[2, 1, -1], [1, 3], [2, 3, -2]],
                 backend=self.backend.name)
 
   def right_transfer_operator(self, B, r, Bbar):
-    return ncon([B, r, Bbar], [[-1, 2, 1], [1, 3], [-2, 2, 3]],
+    return ncon([B, r, Bbar], [[2, -1, 1], [1, 3], [2, -2, 3]],
                 backend=self.backend.name)
 
   def __len__(self) -> int:
@@ -163,7 +169,7 @@ class BaseMPS:
         Q, R = self.qr(self.tensors[n])
         self.tensors[n] = Q
         self.tensors[n + 1] = ncon([R, self.tensors[n + 1]],
-                                   [[-1, 1], [1, -2, -3]],
+                                   [[-2, 1], [-1, 1, -3]],
                                    backend=self.backend.name)
         Z = self.norm(self.tensors[n + 1])
         # for an mps with > O(10) sites one needs to normalize to avoid
@@ -206,13 +212,13 @@ class BaseMPS:
   @property
   def bond_dimensions(self) -> List:
     """A list of bond dimensions of `BaseMPS`"""
-    return [self.tensors[0].shape[0]] + [t.shape[2] for t in self.tensors]
+    return [self.tensors[0].shape[1]] + [t.shape[2] for t in self.tensors]
 
   @property
   def physical_dimensions(self) -> List:
     """A list of physical Hilbert-space dimensions of `BaseMPS`"""
 
-    return [t.shape[1] for t in self.tensors]
+    return [t.shape[0] for t in self.tensors]
 
   def right_envs(self, sites: Sequence[int]) -> Dict:
     raise NotImplementedError()
@@ -268,12 +274,12 @@ class BaseMPS:
       L = Node(left_envs[site], backend=self.backend)
       A = Node(self.tensors[site], backend=self.backend)
       conj_A = conj(A)
-      O[1] ^ A[1]
-      O[0] ^ conj_A[1]
+      O[1] ^ A[0]
+      O[0] ^ conj_A[0]
       R[0] ^ A[2]
       R[1] ^ conj_A[2]
-      L[0] ^ A[0]
-      L[1] ^ conj_A[0]
+      L[0] ^ A[1]
+      L[1] ^ conj_A[1]
       result = L @ A @ O @ conj_A @ R
       res.append(result.tensor)
     return res
@@ -331,8 +337,8 @@ class BaseMPS:
       R = Node(rs[site1], backend=self.backend)
       R[0] ^ A[2]
       R[1] ^ conj_A[2]
-      A[1] ^ O1[1]
-      conj_A[1] ^ O1[0]
+      A[0] ^ O1[1]
+      conj_A[0] ^ O1[0]
       R = ((R @ A) @ O1) @ conj_A
       n1 = np.min(left_sites)
       #          -- A--------
@@ -355,10 +361,10 @@ class BaseMPS:
           conj_A = conj(A)
           O2 = Node(op2, backend=self.backend)
           L = Node(ls[n % N], backend=self.backend)
-          L[0] ^ A[0]
-          L[1] ^ conj_A[0]
-          O2[0] ^ conj_A[1]
-          O2[1] ^ A[1]
+          L[0] ^ A[1]
+          L[1] ^ conj_A[1]
+          O2[0] ^ conj_A[0]
+          O2[1] ^ A[0]
           R[0] ^ A[2]
           R[1] ^ conj_A[2]
 
@@ -381,12 +387,12 @@ class BaseMPS:
       conj_A = conj(A)
 
       O1[1] ^ O2[0]
-      L[0] ^ A[0]
-      L[1] ^ conj_A[0]
+      L[0] ^ A[1]
+      L[1] ^ conj_A[1]
       R[0] ^ A[2]
       R[1] ^ conj_A[2]
-      A[1] ^ O2[1]
-      conj_A[1] ^ O1[0]
+      A[0] ^ O2[1]
+      conj_A[0] ^ O1[0]
       O = O1 @ O2
       res = (((L @ A) @ O) @ conj_A) @ R
       c.append(res.tensor)
@@ -397,10 +403,10 @@ class BaseMPS:
       conj_A = conj(A)
       L = Node(ls[site1], backend=self.backend)
       O1 = Node(op1, backend=self.backend)
-      L[0] ^ A[0]
-      L[1] ^ conj_A[0]
-      A[1] ^ O1[1]
-      conj_A[1] ^ O1[0]
+      L[0] ^ A[1]
+      L[1] ^ conj_A[1]
+      A[0] ^ O1[1]
+      conj_A[0] ^ O1[0]
       L = L @ A @ O1 @ conj_A
       n2 = np.max(right_sites)
       #          -- A--
@@ -422,10 +428,10 @@ class BaseMPS:
           A = Node(self.tensors[n % N], backend=self.backend)
           conj_A = conj(A)
           O2 = Node(op2, backend=self.backend)
-          A[0] ^ L[0]
-          conj_A[0] ^ L[1]
-          O2[0] ^ conj_A[1]
-          O2[1] ^ A[1]
+          A[1] ^ L[0]
+          conj_A[1] ^ L[1]
+          O2[0] ^ conj_A[0]
+          O2[1] ^ A[0]
           R[0] ^ A[2]
           R[1] ^ conj_A[2]
           res = L @ A @ O2 @ conj_A @ R
@@ -487,10 +493,10 @@ class BaseMPS:
     gate_node = Node(gate, backend=self.backend)
     node1 = Node(self.tensors[site1], backend=self.backend)
     node2 = Node(self.tensors[site2], backend=self.backend)
-    node1[2] ^ node2[0]
-    gate_node[2] ^ node1[1]
-    gate_node[3] ^ node2[1]
-    left_edges = [node1[0], gate_node[0]]
+    node1[2] ^ node2[1]
+    gate_node[2] ^ node1[0]
+    gate_node[3] ^ node2[0]
+    left_edges = [node1[1], gate_node[0]]
     right_edges = [gate_node[1], node2[2]]
     result = node1 @ node2 @ gate_node
     U, S, V, tw = split_node_full_svd(
@@ -523,7 +529,7 @@ class BaseMPS:
       raise ValueError('site = {} is not between 0 <= site < N={}'.format(
           site, len(self)))
     self.tensors[site] = ncon([gate, self.tensors[site]],
-                              [[-2, 1], [-1, 1, -3]],
+                              [[-1, 1], [1, -2, -3]],
                               backend=self.backend.name)
 
   def check_orthonormality(self, which: Text, site: int) -> Tensor:
@@ -551,7 +557,7 @@ class BaseMPS:
       n1[1] ^ n2[1]
     else:
       n1[2] ^ n2[2]
-      n1[1] ^ n2[1]
+      n1[0] ^ n2[0]
     result = n1 @ n2
     return self.norm(
         abs(result.tensor - self.backend.eye(
