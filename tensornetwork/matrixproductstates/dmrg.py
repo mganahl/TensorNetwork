@@ -566,6 +566,143 @@ class BaseDMRG:
                              self.mpo.tensors[0])
     ], [[1, 1, -1]], backend=self.backend.name)[0]
 
+  def run_one_site_timing(self,
+                          start,
+                          stop,
+                          num_sweeps=4,
+                          precision=1E-6,
+                          num_krylov_vecs=10,
+                          verbose=0,
+                          delta=1E-6,
+                          tol=1E-6,
+                          ndiag=10):
+    if num_sweeps == 0:
+      return self.compute_energy()
+
+    converged = False
+    final_energy = 1E100
+    iteration = 1
+    initial_site = start
+    self.mps.position(start)  #move center position to the left end
+    self.compute_left_envs()
+    self.compute_right_envs()
+
+    def print_msg(site):
+      if verbose < 2:
+        stdout.write(f"\rSS-DMRG sweep={iteration}/{num_sweeps}, "
+                     f"site={site}/{len(self.mps)}: optimized E={energy}")
+        stdout.flush()
+
+      if verbose >= 2:
+        print(f"SS-DMRG sweep={iteration}/{num_sweeps}, "
+              f"site={site}/{len(self.mps)}: optimized E={energy}")
+
+    while not converged:
+      if initial_site == 0:
+        self.position(0)
+        #the part outside the loop covers the len(self)==1 case
+        energy = self._optimize_1s_local(
+            sweep_dir='right',
+            num_krylov_vecs=num_krylov_vecs,
+            tol=tol,
+            delta=delta,
+            ndiag=ndiag)
+
+        initial_site += 1
+        print_msg(site=0)
+      while self.mps.center_position < stop:
+        #_optimize_1site_local shifts the center site internally
+        energy = self._optimize_1s_local(
+            sweep_dir='right',
+            num_krylov_vecs=num_krylov_vecs,
+            tol=tol,
+            delta=delta,
+            ndiag=ndiag)
+
+        print_msg(site=self.mps.center_position - 1)
+      #prepare for left sweep: move center all the way to the right
+      self.position(stop)
+      while self.mps.center_position > start:
+        #_optimize_1site_local shifts the center site internally
+        energy = self._optimize_1s_local(
+            sweep_dir='left',
+            num_krylov_vecs=num_krylov_vecs,
+            tol=tol,
+            delta=delta,
+            ndiag=ndiag)
+
+        print_msg(site=self.mps.center_position + 1)
+
+      if np.abs(final_energy - energy) < precision:
+        converged = True
+      final_energy = energy
+      iteration += 1
+      if iteration > num_sweeps:
+        if verbose > 0:
+          print()
+          print("dmrg did not converge to desired precision {0} "
+                "after {1} iterations".format(precision, num_sweeps))
+        break
+    return final_energy
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    
+    def print_msg(site):
+      if verbose > 0:
+        stdout.write("\rSS-DMRG it=%i/%i, site=%i/%i: optimized E=%.16f+%.16f" %
+                     (iteration, num_sweeps, site, len(
+                         self.mps), np.real(energy), np.imag(energy)))
+        stdout.flush()
+      if verbose > 1:
+        print("")
+
+    while not converged:
+      for site in range(start, stop - 1):
+        #_optimize_1site_local shifts the center site internally
+        energy = self._optimize_1s_local(
+            sweep_dir='right',
+            num_krylov_vecs=num_krylov_vecs,
+            tol=tol,
+            delta=delta,
+            ndiag=ndiag,
+            verbose=verbose)
+        print_msg(site=self.mps.center_position)
+
+      #prepare for right sweep: move center all the way to the right
+      self.position(stop)
+      for site in reversed(range(start + 1, stop)):
+        #_optimize_1site_local shifts the center site internally
+        energy = self._optimize_1s_local(
+            sweep_dir='left',
+            num_krylov_vecs=num_krylov_vecs,
+            tol=tol,
+            delta=delta,
+            ndiag=ndiag,
+            verbose=verbose)
+        print_msg(site=self.mps.center_position)
+
+      final_energy = energy
+      iteration += 1
+      if iteration > num_sweeps:
+        if verbose > 0:
+          print()
+          print(
+              'dmrg did not converge to desired precision {0} after {1} iterations'
+              .format(precision, num_sweeps))
+        break
+    return final_energy
 
 class FiniteDMRG(BaseDMRG):
   """

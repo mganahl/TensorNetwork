@@ -5,6 +5,7 @@ import numpy as np
 import jax
 import pickle
 import jax.config as config
+import tensornetwork.matrixproductstates.timer as timer
 config.update("jax_enable_x64", False)
 backend = 'jax'
 tn.set_default_backend(backend)
@@ -30,8 +31,8 @@ for dtype in [np.float32]:
         'first_run_timings_D{}_N_{}_dtype{}.pickle'.format(
             D, N,
             np.dtype(dtype).name), 'wb') as f:
-      pickle.dump(dmrg.timings, f)
-    dmrg.reset_timings()
+      pickle.dump(timer.timings, f)
+    timer.reset_all()
     dmrg.run_one_site_timing(
         13,
         17,
@@ -44,4 +45,4 @@ for dtype in [np.float32]:
         'second_run_timings_D{}_N_{}_dtype{}.pickle'.format(
             D, N,
             np.dtype(dtype).name), 'wb') as f:
-      pickle.dump(dmrg.timings, f)
+      pickle.dump(timer.timings, f)
