@@ -18,7 +18,7 @@ from tensornetwork.matrixproductstates.mpo import BaseMPO, FiniteMPO
 from tensornetwork.ncon_interface import ncon
 from sys import stdout
 from typing import Any, Text, Union
-import tensornetwork.matrixproductstates.timer as timer
+import tensornetwork.timer as timer
 from functools import partial
 Tensor = Any
 

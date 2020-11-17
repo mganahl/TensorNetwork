@@ -22,7 +22,7 @@ import warnings
 from tensornetwork.ncon_interface import ncon
 from tensornetwork.backend_contextmanager import get_default_backend
 from tensornetwork.backends.abstract_backend import AbstractBackend
-import tensornetwork.matrixproductstates.timer as timer
+import tensornetwork.timer as timer
 
 from typing import Any, List, Optional, Text, Type, Union, Dict, Sequence
 Tensor = Any
