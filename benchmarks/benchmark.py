@@ -7,6 +7,7 @@ import pickle
 import jax.config as config
 import tensornetwork.matrixproductstates.timer as timer
 config.update("jax_enable_x64", False)
+
 backend = 'jax'
 tn.set_default_backend(backend)
 N = 30
