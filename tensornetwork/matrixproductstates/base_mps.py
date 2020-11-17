@@ -22,6 +22,8 @@ import warnings
 from tensornetwork.ncon_interface import ncon
 from tensornetwork.backend_contextmanager import get_default_backend
 from tensornetwork.backends.abstract_backend import AbstractBackend
+import tensornetwork.matrixproductstates.timer as timer
+
 from typing import Any, List, Optional, Text, Type, Union, Dict, Sequence
 Tensor = Any
 
@@ -99,12 +101,13 @@ class BaseMPS:
       return self.backend.svd(tensor=tensor, pivot_axis=2,
                               max_singular_values=max_singular_values)
     self.svd = svd
-
+    @partial(timer.timer, name = 'right_qr')
     @partial(jit, backend=self.backend)
     def qr(tensor):
       return self.backend.qr(tensor, 2)
     self.qr = qr
 
+    @partial(timer.timer, name = 'left_qr')
     @partial(jit, backend=self.backend)
     def rq(tensor):
       return self.backend.rq(tensor, 1)

@@ -18,8 +18,11 @@ from tensornetwork.matrixproductstates.mpo import BaseMPO, FiniteMPO
 from tensornetwork.ncon_interface import ncon
 from sys import stdout
 from typing import Any, Text, Union
+import tensornetwork.matrixproductstates.timer as timer
+from functools import partial
 Tensor = Any
 
+timings = {'lanczos': [], 'left-qr': [], 'right-qr': [], 'total': []}
 class BaseDMRG:
   """
   A base class for DMRG (and possibly other) simulations.
@@ -31,12 +34,12 @@ class BaseDMRG:
     """
     Base class for DMRG simulations.
     Args:
-      mps: The initial mps. Should be either FiniteMPS or InfiniteMPS 
+      mps: The initial mps. Should be either FiniteMPS or InfiniteMPS
         (latter is not yet supported).
       mpo: A `FiniteMPO` or `InfiniteMPO` object.
-      lb:  The left boundary environment. `lb` has to have shape 
+      lb:  The left boundary environment. `lb` has to have shape
         (mpo[0].shape[0],mps[0].shape[0],mps[0].shape[0])
-      rb: The right environment. `rb` has to have shape 
+      rb: The right environment. `rb` has to have shape
         (mpo[-1].shape[1],mps[-1].shape[1],mps[-1].shape[1])
       name: An optional name for the simulation.
     Raises:
@@ -180,7 +183,7 @@ class BaseDMRG:
       self.right_envs[n - 1] = self.add_right_layer(self.right_envs[n],
                                                     self.mps.tensors[n],
                                                     self.mpo.tensors[n])
-
+  @partial(timer.timer, name='total')
   def _optimize_1s_local(self,
                          sweep_dir,
                          num_krylov_vecs=10,
@@ -188,8 +191,8 @@ class BaseDMRG:
                          delta=1E-6,
                          ndiag=10) -> np.number:
     """
-    Single-site optimization at the current position of the center site. 
-    The method shifts the center position of the mps by one site 
+    Single-site optimization at the current position of the center site.
+    The method shifts the center position of the mps by one site
     to the left or to the right, depending on the value of `sweep_dir`.
     Args:
       sweep_dir: Sweep direction; 'left' or 'l' for a sweep from right to left,
@@ -199,7 +202,7 @@ class BaseDMRG:
       delta: Stopping criterion for Lanczos iteration.
         If a Krylov vector :math: `x_n` has an L2 norm
         :math:`\\lVert x_n\\rVert < delta`, the iteration
-        is stopped. 
+        is stopped.
       ndiag: Inverse frequencey of tridiagonalizations in `eighs_lanczos`.
     Returns:
       float/complex: The local energy after optimization.
@@ -208,7 +211,8 @@ class BaseDMRG:
     #note: some backends will jit functions
     self.left_envs[site]
     self.right_envs[site]
-    energies, states = self.backend.eigsh_lanczos(
+    eigsh_lanczos = timer.timer(self.backend.eigsh_lanczos, name='lanczos')
+    energies, states = eigsh_lanczos(
         A=self.single_site_matvec,
         args=[
             self.left_envs[site], self.mpo.tensors[site], self.right_envs[site]
@@ -220,6 +224,7 @@ class BaseDMRG:
         delta=delta,
         ndiag=ndiag,
         reorthogonalize=False)
+
     local_ground_state = states[0]
     energy = energies[0]
     local_ground_state /= self.backend.norm(local_ground_state)
