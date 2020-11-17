@@ -22,7 +22,6 @@ import tensornetwork.timer as timer
 from functools import partial
 Tensor = Any
 
-timings = {'lanczos': [], 'left-qr': [], 'right-qr': [], 'total': []}
 class BaseDMRG:
   """
   A base class for DMRG (and possibly other) simulations.
