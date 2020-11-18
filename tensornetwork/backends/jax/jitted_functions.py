@@ -23,6 +23,7 @@ Tensor = Any
 def _iterative_classical_gram_schmidt(jax: types.ModuleType) -> Callable:
 
   JaxPrecisionType = type(jax.lax.Precision.DEFAULT)
+
   def iterative_classical_gram_schmidt(
       vector: jax.ShapedArray,
       krylov_vectors: jax.ShapedArray,
@@ -41,13 +42,16 @@ def _iterative_classical_gram_schmidt(jax: types.ModuleType) -> Callable:
     Returns:
       jax.ShapedArray: The orthogonalized vector.
     """
+    i1 = list(range(1, len(krylov_vectors.shape)))
+    i2 = list(range(len(vector.shape)))
+
     vec = vector
     overlaps = 0
     for _ in range(iterations):
-      ov = jax.numpy.dot(
-          krylov_vectors.conj(), vec, precision=precision)
-      vec = vec - jax.numpy.dot(
-          ov, krylov_vectors, precision=precision)
+      ov = jax.numpy.tensordot(krylov_vectors.conj(), vec,(i1,i2),
+                               precision=precision)
+      vec = vec - jax.numpy.tensordot(
+          ov, krylov_vectors, ([0],[0]), precision=precision)
       overlaps = overlaps + ov
     return vec, overlaps
   return iterative_classical_gram_schmidt
@@ -119,6 +123,8 @@ def _generate_jitted_eigsh_lanczos(jax: types.ModuleType) -> Callable:
     """
     shape = init.shape
     dtype = init.dtype
+    trailing_slices = tuple([slice(s) for s in shape])
+
     def scalar_product(a,b):
       i1 = list(range(len(a.shape)))
       i2 = list(range(len(b.shape)))
@@ -126,7 +132,8 @@ def _generate_jitted_eigsh_lanczos(jax: types.ModuleType) -> Callable:
 
     def body_lanczos(vals):
       krylov_vectors, alphas, betas, i = vals
-      previous_vector = krylov_vectors[i, :, :, :]
+      slices = (i,) + trailing_slices
+      previous_vector = krylov_vectors[slices]
       beta = jax.numpy.linalg.norm(previous_vector)
       normalized_vector = previous_vector / beta
       Av = matvec(normalized_vector, *arguments)
@@ -135,8 +142,9 @@ def _generate_jitted_eigsh_lanczos(jax: types.ModuleType) -> Callable:
       betas = betas.at[i].set(beta)
       next_vector = Av - normalized_vector * alpha -   krylov_vectors[i - 1] * beta
 
-      krylov_vectors = krylov_vectors.at[i, :,:,:].set(normalized_vector)
-      krylov_vectors = krylov_vectors.at[i + 1, :, :, :].set(next_vector)
+      krylov_vectors = krylov_vectors.at[slices].set(normalized_vector)
+      slices = (i + 1,) + trailing_slices
+      krylov_vectors = krylov_vectors.at[slices].set(next_vector)
 
       return [krylov_vectors, alphas, betas, i + 1]
 
