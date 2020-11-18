@@ -126,9 +126,9 @@ class BaseDMRG:
 
   def position(self, site: int):
     """
-    Shifts the center position `site`, and updates left and 
-    right environments accordingly. Left blocks at sites > `site` are set 
-    to `None`, and right blocks at sites < `site` are `None`. 
+    Shifts the center position `site`, and updates left and
+    right environments accordingly. Left blocks at sites > `site` are set
+    to `None`, and right blocks at sites < `site` are `None`.
     Args:
       site: The site to which the position of the center-site should be shifted.
     Returns: BaseDMRG
