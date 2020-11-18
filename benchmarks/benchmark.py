@@ -20,6 +20,7 @@ for dtype in [np.float32]:
     mps = tn.FiniteMPS.random(
         [2] * N, [D] * (N - 1), dtype=dtype, canonicalize=True)
     dmrg = FiniteDMRG(mps, mpo)
+    timer.reset_all()
     dmrg.run_one_site_timing(
         13,
         17,
