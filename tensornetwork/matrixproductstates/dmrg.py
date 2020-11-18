@@ -86,10 +86,15 @@ class BaseDMRG:
       return self.backend.tensordot(tmp2, self.backend.conj(mps_tensor),
                                     ([1, 3], [0, 2]))
 
+    def single_site_matvec(mpstensor, L, mpotensor, R):
+      tmp1 = self.backend.einsum("aAc,dAf->dacf", L, mpstensor)
+      tmp2 = self.backend.einsum("BAab,AcdB->dcab", tmp1, mpotensor)
+      return self.backend.einsum("aAbB,ABc->abc", tmp2, R)
+
     self.add_left_layer = self.backend.jit(add_left_layer)
     self.add_right_layer = self.backend.jit(add_right_layer)
-    self.einsum = self.backend.jit(self.backend.einsum, static_argnums=(0,))
-    
+    self.single_site_matvec = self.backend.jit(single_site_matvec)
+
   @property
   def backend(self):
     return self.mps.backend
