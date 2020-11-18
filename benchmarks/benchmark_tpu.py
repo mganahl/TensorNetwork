@@ -1,3 +1,7 @@
+from cloud_tpu_client import Client
+c = Client('tpu-node-2')
+c.configure_tpu_version('tpu_driver_nightly')
+
 import tensornetwork as tn
 from tensornetwork.matrixproductstates.dmrg import FiniteDMRG
 from tensornetwork.matrixproductstates.mpo import FiniteXXZ
@@ -5,11 +9,15 @@ import numpy as np
 import jax
 import pickle
 import jax.config as config
-import tensornetwork.matrixproductstates.timer as timer
+import tensornetwork.timer as timer
 config.update("jax_enable_x64", False)
-
+config.FLAGS.jax_xla_backend = "tpu_driver"
+#config.FLAGS.jax_backend_target = "grpc://10.203.32.162:8470" #tpu-node-1 (v2-8)
+config.FLAGS.jax_backend_target = "grpc://10.149.215.90:8470" #tpu-node-2 (v3-8)
 backend = 'jax'
 tn.set_default_backend(backend)
+backend = tn.backends.backend_factory.get_backend('jax')
+backend.jax_precision = jax.lax.Precision.HIGHEST
 N = 30
 Jz = np.ones(N - 1)
 Jxy = np.ones(N - 1)
@@ -24,7 +32,7 @@ for dtype in [np.float32]:
         13,
         17,
         num_sweeps=1,
-        verbose=0,
+        verbose=1,
         num_krylov_vecs=10,
         delta=1E-16,
         tol=1E-16)
@@ -38,7 +46,7 @@ for dtype in [np.float32]:
         13,
         17,
         num_sweeps=10,
-        verbose=0,
+        verbose=1,
         num_krylov_vecs=10,
         delta=1E-16,
         tol=1E-16)
