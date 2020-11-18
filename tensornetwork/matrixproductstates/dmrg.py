@@ -75,16 +75,23 @@ class BaseDMRG:
 
     self.name = name
     def add_left_layer(L, mps_tensor, mpo_tensor):
-      tmp1 = self.backend.tensordot(L, mps_tensor, ([1], [1]))
-      tmp2 = self.backend.tensordot(mpo_tensor, tmp1, ([0, 3], [0, 2]))
-      return self.backend.tensordot(tmp2, self.backend.conj(mps_tensor),
-                                    ([1, 2], [0, 1]))
+      # tmp1 = self.backend.tensordot(L, mps_tensor, ([1], [1]))
+      tmp1 = self.backend.einsum("aAb,cAd->abcd", L, mps_tensor)
+      # tmp2 = self.backend.tensordot(mpo_tensor, tmp1, ([0, 3], [0, 2]))
+      tmp2 = self.backend.einsum("AabD,AcDd->abcd", mpo_tensor, tmp1)
+      # return self.backend.tensordot(tmp2, self.backend.conj(mps_tensor),
+      #                               ([1, 2], [0, 1]))
+      return self.backend.einsum("aACb,ACc->abc", tmp2, self.backend.conj(mps_tensor))
+
 
     def add_right_layer(R, mps_tensor, mpo_tensor):
-      tmp1 = self.backend.tensordot(mps_tensor, R, ([2], [1]))
-      tmp2 = self.backend.tensordot(mpo_tensor, tmp1, ([3, 1], [0, 2]))
-      return self.backend.tensordot(tmp2, self.backend.conj(mps_tensor),
-                                    ([1, 3], [0, 2]))
+      #tmp1 = self.backend.tensordot(mps_tensor, R, ([2], [1]))
+      tmp1 = self.backend.einsum("abC,cCd->abcd", mps_tensor, R)
+      #tmp2 = self.backend.tensordot(mpo_tensor, tmp1, ([3, 1], [0, 2]))
+      tmp2 = self.backend.einsum("aBbD,DcBd->abcd", mpo_tensor, tmp1)
+      #return self.backend.tensordot(tmp2, self.backend.conj(mps_tensor),
+      #                              ([1, 3], [0, 2]))
+      return self.backend.einsum("aBbD,BcD->abc", tmp2, self.backend.conj(mps_tensor))
 
     def single_site_matvec(mpstensor, L, mpotensor, R):
       tmp1 = self.backend.einsum("aAc,dAf->dacf", L, mpstensor)
