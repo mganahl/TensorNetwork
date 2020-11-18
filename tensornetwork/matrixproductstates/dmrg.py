@@ -74,7 +74,7 @@ class BaseDMRG:
           .format(self.right_envs[0].dtype, self.dtype))
 
     self.name = name
-
+    self.einsum = self.backend.jit(self.backend.einsum, static_argnums=(0,))
   @property
   def backend(self):
     return self.mps.backend
@@ -90,12 +90,17 @@ class BaseDMRG:
     return self.mps.dtype
 
   def single_site_matvec(self, mpstensor, L, mpotensor, R):
-    tmp1 = ncon([L, mpstensor], [[-2, 1, -3], [-1, 1, -4]],
-                backend=self.backend.name)
-    tmp2 = ncon([tmp1, mpotensor], [[2, 1, -3, -4], [1, -2, -1, 2]],
-                backend=self.backend.name)
-    return ncon([tmp2, R], [[-1, 2, - 2, 1], [2, 1, -3]],
-                backend=self.backend.name)
+
+
+    tmp1 = self.einsum("aAc,dAf->dacf", L, mpstensor)
+    # tmp1 = ncon([L, mpstensor], [[-2, 1, -3], [-1, 1, -4]],
+    #             backend=self.backend.name)
+    tmp2 = self.einsum("BAab,AcdB->dcab", tmp1, mpotensor)
+    # tmp2 = ncon([tmp1, mpotensor], [[2, 1, -3, -4], [1, -2, -1, 2]],
+    #             backend=self.backend.name)
+    return self.einsum("aAbB,ABc->abc", tmp2, R)
+    # return ncon([tmp2, R], [[-1, 2, -2, 1], [2, 1, -3]],
+    #             backend=self.backend.name)
 
   def two_site_matvec(self, mps_bond_tensor, L, left_mpotensor,
                       right_mpotensor, R):
