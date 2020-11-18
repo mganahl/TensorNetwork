@@ -74,7 +74,20 @@ class BaseDMRG:
           .format(self.right_envs[0].dtype, self.dtype))
 
     self.name = name
-    self.einsum = self.backend.jit(self.backend.einsum, static_argnums=(0,))
+    def add_left_layer(L, mps_tensor, mpo_tensor):
+      tmp1 = self.backend.tensordot(L, mps_tensor, ([1], [1]))
+      tmp2 = self.backend.tensordot(mpo_tensor, tmp1, ([0, 3], [0, 2]))
+      return self.backend.tensordot(tmp2, self.backend.conj(mps_tensor),
+                                    ([1, 2], [0, 1]))
+
+    def add_right_layer(R, mps_tensor, mpo_tensor):
+      tmp1 = self.backend.tensordot(mps_tensor, R, ([2], [1]))
+      tmp2 = self.backend.tensordot(mpo_tensor, tmp1, ([3, 1], [0, 2]))
+      return self.backend.tensordot(tmp2, self.backend.conj(mps_tensor),
+                                    ([1, 3], [0, 2]))
+
+    self.add_left_layer = self.backend.jit(add_left_layer)
+    self.add_right_layer = self.backend.jit(add_right_layer)
   @property
   def backend(self):
     return self.mps.backend
@@ -90,17 +103,11 @@ class BaseDMRG:
     return self.mps.dtype
 
   def single_site_matvec(self, mpstensor, L, mpotensor, R):
-
-
-    tmp1 = self.einsum("aAc,dAf->dacf", L, mpstensor)
-    # tmp1 = ncon([L, mpstensor], [[-2, 1, -3], [-1, 1, -4]],
-    #             backend=self.backend.name)
-    tmp2 = self.einsum("BAab,AcdB->dcab", tmp1, mpotensor)
-    # tmp2 = ncon([tmp1, mpotensor], [[2, 1, -3, -4], [1, -2, -1, 2]],
-    #             backend=self.backend.name)
-    return self.einsum("aAbB,ABc->abc", tmp2, R)
-    # return ncon([tmp2, R], [[-1, 2, -2, 1], [2, 1, -3]],
-    #             backend=self.backend.name)
+    tmp1 = self.backend.transpose(
+        self.backend.tensordot(L, mpstensor, ([1], [1])), (2, 0, 1, 3))
+    tmp2 = self.backend.transpose(
+        self.backend.tensordot(tmp1, mpotensor, ([0, 1], [3, 0])), (3, 2, 0, 1))
+    return self.backend.tensordot(tmp2, R, ([1, 3], [0, 1]))
 
   def two_site_matvec(self, mps_bond_tensor, L, left_mpotensor,
                       right_mpotensor, R):
@@ -109,17 +116,6 @@ class BaseDMRG:
                  [7, 6, -4]],
                 backend=self.backend.name)
 
-  def add_left_layer(self, L, mps_tensor, mpo_tensor):
-    return ncon([L, mps_tensor, mpo_tensor,
-                 self.backend.conj(mps_tensor)],
-                [[2, 1, 5], [3, 1, -2], [2, -1, 4, 3], [4, 5, -3]],
-                backend=self.backend.name)
-
-  def add_right_layer(self, R, mps_tensor, mpo_tensor):
-    return ncon([R, mps_tensor, mpo_tensor,
-                 self.backend.conj(mps_tensor)],
-                [[2, 1, 5], [3, -2, 1], [-1, 2, 4, 3], [4, -3, 5]],
-                backend=self.backend.name)
 
   def position(self, site: int):
     """
