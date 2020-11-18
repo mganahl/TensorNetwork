@@ -103,11 +103,15 @@ class BaseDMRG:
     return self.mps.dtype
 
   def single_site_matvec(self, mpstensor, L, mpotensor, R):
-    tmp1 = self.backend.transpose(
-        self.backend.tensordot(L, mpstensor, ([1], [1])), (2, 0, 1, 3))
-    tmp2 = self.backend.transpose(
-        self.backend.tensordot(tmp1, mpotensor, ([0, 1], [3, 0])), (3, 2, 0, 1))
-    return self.backend.tensordot(tmp2, R, ([1, 3], [0, 1]))
+    tmp1 = self.einsum("aAc,dAf->dacf", L, mpstensor)
+    tmp2 = self.einsum("BAab,AcdB->dcab", tmp1, mpotensor)
+    return self.einsum("aAbB,ABc->abc", tmp2, R)
+
+    # tmp1 = self.backend.transpose(
+    #     self.backend.tensordot(L, mpstensor, ([1], [1])), (2, 0, 1, 3))
+    # tmp2 = self.backend.transpose(
+    #     self.backend.tensordot(tmp1, mpotensor, ([0, 1], [3, 0])), (3, 2, 0, 1))
+    # return self.backend.tensordot(tmp2, R, ([1, 3], [0, 1]))
 
   def two_site_matvec(self, mps_bond_tensor, L, left_mpotensor,
                       right_mpotensor, R):
