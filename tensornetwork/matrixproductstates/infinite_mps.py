@@ -87,7 +87,7 @@ class InfiniteMPS(BaseMPS):
       raise ValueError('D[0]={} != D[-1]={}.'.format(D[0], D[-1]))
 
     tensors = [
-        be.randn((D[n], d[n], D[n + 1]), dtype=dtype) for n in range(len(d))
+        be.randn((d[n], D[n], D[n + 1]), dtype=dtype) for n in range(len(d))
     ]
     return cls(tensors=tensors, center_position=0, backend=backend)
 

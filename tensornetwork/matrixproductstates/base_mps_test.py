@@ -74,9 +74,9 @@ def test_backend_initialization(backend):
 def test_backend_initialization_raises(backend):
   be = backend_factory.get_backend(backend)
   D, d, N = 10, 2, 10
-  tensors = [np.random.randn(1, d, D)] + [
-      np.random.randn(D, d, D) for _ in range(N - 2)
-  ] + [np.random.randn(D, d, 1)]
+  tensors = [np.random.randn(d, 1, D)] + [
+      np.random.randn(d, D, D) for _ in range(N - 2)
+  ] + [np.random.randn(d, D, 1)]
   with pytest.raises(
       ValueError,
       match="`center_position = 10` is different from `None` and "
@@ -94,9 +94,9 @@ def test_left_orthonormalization(backend_dtype_values):
   dtype = backend_dtype_values[1]
 
   D, d, N = 10, 2, 10
-  tensors = [get_random_np((1, d, D), dtype)] + [
-      get_random_np((D, d, D), dtype) for _ in range(N - 2)
-  ] + [get_random_np((D, d, 1), dtype)]
+  tensors = [get_random_np((d, 1, D), dtype)] + [
+      get_random_np((d, D, D), dtype) for _ in range(N - 2)
+  ] + [get_random_np((d, D, 1), dtype)]
   mps = BaseMPS(tensors, center_position=N - 1, backend=backend)
   mps.position(0)
   mps.position(len(mps) - 1)
@@ -110,9 +110,9 @@ def test_right_orthonormalization(backend_dtype_values):
   backend = backend_dtype_values[0]
   dtype = backend_dtype_values[1]
   D, d, N = 10, 2, 10
-  tensors = [get_random_np((1, d, D), dtype)] + [
-      get_random_np((D, d, D), dtype) for _ in range(N - 2)
-  ] + [get_random_np((D, d, 1), dtype)]
+  tensors = [get_random_np((d, 1, D), dtype)] + [
+      get_random_np((d, D, D), dtype) for _ in range(N - 2)
+  ] + [get_random_np((d, D, 1), dtype)]
   mps = BaseMPS(tensors, center_position=0, backend=backend)
 
   mps.position(len(mps) - 1)
