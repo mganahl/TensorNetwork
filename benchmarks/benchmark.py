@@ -5,7 +5,7 @@ import numpy as np
 import jax
 import pickle
 import jax.config as config
-import tensornetwork.matrixproductstates.timer as timer
+import tensornetwork.timer as timer
 config.update("jax_enable_x64", False)
 
 backend = 'jax'
@@ -24,7 +24,7 @@ for dtype in [np.float32]:
         13,
         17,
         num_sweeps=1,
-        verbose=0,
+        verbose=1,
         num_krylov_vecs=10,
         delta=1E-16,
         tol=1E-16)
@@ -38,7 +38,7 @@ for dtype in [np.float32]:
         13,
         17,
         num_sweeps=10,
-        verbose=0,
+        verbose=1,
         num_krylov_vecs=10,
         delta=1E-16,
         tol=1E-16)
