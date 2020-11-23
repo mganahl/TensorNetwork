@@ -7,9 +7,11 @@ import pickle
 import jax.config as config
 import tensornetwork.timer as timer
 config.update("jax_enable_x64", False)
-
 backend = 'jax'
 tn.set_default_backend(backend)
+backend = tn.backends.backend_factory.get_backend('jax')
+backend.jax_precision = jax.lax.Precision.HIGHEST
+
 N = 30
 Jz = np.ones(N - 1)
 Jxy = np.ones(N - 1)
