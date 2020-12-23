@@ -12,9 +12,9 @@ N = 30
 Jz = np.ones(N - 1)
 Jxy = np.ones(N - 1)
 Bz = np.zeros(N)
-for dtype in [np.float32]:
+for dtype in [np.float64]:
   mpo = FiniteXXZ(Jz, Jxy, Bz, dtype=dtype)
-  for D in [32, 64, 128, 256, 512, 1024, 2048, 4096]:
+  for D in [32, 64, 128, 256, 512, 1024, 2048]:
     mps = tn.FiniteMPS.random(
         [2] * N, [D] * (N - 1), dtype=dtype, canonicalize=True)
     dmrg = FiniteDMRG(mps, mpo)
@@ -22,12 +22,12 @@ for dtype in [np.float32]:
         13,
         17,
         num_sweeps=1,
-        verbose=0,
+        verbose=1,
         num_krylov_vecs=10,
         delta=1E-16,
         tol=1E-16)
     with open(
-        'first_run_timings_D{}_N_{}_dtype{}.pickle'.format(
+        'first_run_timings_10_11_2020_D{}_N_{}_dtype{}.pickle'.format(
             D, N,
             np.dtype(dtype).name), 'wb') as f:
       pickle.dump(dmrg.timings, f)
@@ -36,12 +36,12 @@ for dtype in [np.float32]:
         13,
         17,
         num_sweeps=10,
-        verbose=0,
+        verbose=1,
         num_krylov_vecs=10,
         delta=1E-16,
         tol=1E-16)
     with open(
-        'second_run_timings_D{}_N_{}_dtype{}.pickle'.format(
+        'second_run_timings_10_11_2020_D{}_N_{}_dtype{}.pickle'.format(
             D, N,
             np.dtype(dtype).name), 'wb') as f:
       pickle.dump(dmrg.timings, f)
